@@ -1,0 +1,616 @@
+.Dd 2026-10-15 19:00:00
+.Dt QUERY-PROCESSING 1
+.Os
+.Sh NAME
+.Nm query-processing
+.Nd cara database eksekusi query, dari parsing sampai pipelining
+.Sh DESCRIPTION
+Ini catatan Chapter 12 dari buku Database System Concepts. Isinya:
+langkah-langkah query processing, ukuran cost, algoritma selection,
+sorting, join, operasi lain, dan evaluasi ekspresi.
+.Pp
+Bahasa santai. Tiap algoritma dijelasin kenapa dia ada dan kapan
+dipakai. Karena query yang sama bisa dieksekusi dengan banyak
+cara, dan bedanya bisa dari detik ke hari.
+.Ss Bagian 1: Tiga Langkah Query Processing
+Setiap query yang kamu kirim ke database, lewat 3 langkah:
+.Bl -tag -width "Evaluation" -offset indent
+.It Sy 1. Parsing dan Translation
+Query diterjemahin jadi bentuk internal. Parser cek syntax,
+verify relation yang disebut ada.
+.It Sy 2. Optimization
+Query optimizer pilih evaluation plan yang paling murah. Dari
+semua cara yang equivalent, pilih yang cost-nya paling rendah.
+.It Sy 3. Evaluation
+Query-execution engine ambil plan, eksekusi, return hasil.
+.El
+.Ss Bagian 1.1: Alur Visual
+.Bd -literal -offset indent
+query
+  |
+  v
+[parser and translator] --> relational-algebra expression
+                                  |
+                                  v
+                              [optimizer] <-- statistics
+                                  |
+                                  v
+                            execution plan
+                                  |
+                                  v
+                        [evaluation engine] --> query output
+                                  |
+                                  v
+                                 data
+.Ed
+.Sy Kenapa perlu optimizer?
+Karena satu ekspresi relational algebra bisa punya banyak
+bentuk equivalent. Contoh:
+.Bd -literal -offset indent
+sigma_{salary < 75000}(pi_{salary}(instructor))
+=
+pi_{salary}(sigma_{salary < 75000}(instructor))
+.Ed
+Dua-duanya hasilnya sama, tapi cost-nya beda. Optimizer pilih
+yang lebih murah.
+.Ss Bagian 2: Ukuran Cost Query
+.Sy Cost
+= total elapsed time buat jawab query.
+.Pp
+.Sy Faktor yang contribute:
+.Bl -bullet -offset indent
+.It
+Disk access (paling dominant).
+.It
+CPU.
+.It
+Network communication.
+.El
+.Sy Kenapa disk access yang dihitung?
+Karena disk access paling mahal (5-10 ms) dibanding CPU (ns)
+dan paling gampang diestimasi.
+.Ss Bagian 2.1: Komponen Cost
+.Bd -literal -offset indent
+Cost = (number of seeks) * (average seek cost)
+     + (number of blocks read) * (average block read cost)
+     + (number of blocks written) * (average block write cost)
+.Ed
+.Sy Write lebih mahal dari read.
+Karena setelah write, data dibaca balik buat verifikasi bahwa
+write sukses.
+.Ss Bagian 2.2: Notasi
+.Bl -tag -width "t_S" -offset indent
+.It Sy t T
+Time to transfer one block.
+.It Sy t S
+Time for one seek.
+.It Sy b T
+Total block transfer.
+.It Sy S
+Total seek.
+.El
+.Sy Cost formula:
+.Bd -literal -offset indent
+b * tT + S * tS
+.Ed
+.Sy Kita ignore CPU cost buat simplifikasi.
+Real system tetap hitung, tapi disk access yang dominant.
+.Pp
+.Sy Buffer:
+Kita pakai worst-case estimate. Asumsi cuma minimum memory
+yang available. Data yang udah di buffer nggak dihitung
+disk I/O-nya, tapi hard to estimate.
+.Ss Bagian 3: Selection Operation
+.Sy Selection
+= filter baris berdasarkan kondisi. Notasi
+.Sy sigma Ns _theta Ns ( Ns Ar r Ns ) .
+.Ss Bagian 3.1: A1 \(em Linear Search
+.Sy Algoritma:
+Scan tiap block file, test semua record.
+.Bd -literal -offset indent
+Cost = b_r block transfers + 1 seek
+.Ed
+.Sy Kalau selection on key attribute:
+Bisa stop pas ketemu record. Cost =
+.Sy b_r / 2
+block transfers + 1 seek.
+.Pp
+.Sy Kapan dipakai:
+Bisa dipakai regardless of selection condition, ordering,
+atau index availability.
+.Sy Binary search umumnya nggak masuk akal
+karena data nggak disimpen consecutively (kecuali ada index).
+.Ss Bagian 3.2: A2 \(em Primary Index, Equality on Key
+.Sy Cara:
+Retrieve single record yang satisfy equality.
+.Bd -literal -offset indent
+Cost = (h_i + 1) * (tT + tS)
+.Ed
+.Sy h_i
+= height of index.
+.Ss Bagian 3.3: A3 \(em Primary Index, Equality on Non-Key
+.Sy Cara:
+Retrieve multiple records yang mungkin di consecutive block.
+.Bd -literal -offset indent
+Cost = h_i * (tT + tS) + tS + tT * b
+.Ed
+.Sy b
+= number of blocks containing matching records.
+.Ss Bagian 3.4: A4 \(em Secondary Index, Equality
+.Bl -tag -width "Non-key" -offset indent
+.It Sy Candidate key
+Retrieve single record.
+.Bd -literal -offset indent
+Cost = (h_i + 1) * (tT + tS)
+.Ed
+.It Sy Non-candidate key
+Setiap record bisa di block berbeda. Bisa mahal.
+.Bd -literal -offset indent
+Cost = (h_i + n) * (tT + tS)
+.Ed
+.Sy n
+= number of matching records.
+.El
+.Ss Bagian 3.5: A5 \(em Primary Index, Comparison
+.Sy Sigma A >= v:
+Pakai index buat temuin tuple pertama >= v, scan relation
+sequentially dari situ.
+.Sy Sigma A <= v:
+Scan relation sequentially sampai tuple pertama > v. Jangan
+pakai index.
+.Ss Bagian 3.6: A6 \(em Secondary Index, Comparison
+.Sy Sigma A >= v:
+Pakai index buat temuin index entry pertama >= v, scan index
+sequentially dari situ, temuin pointer ke records.
+.Sy Sigma A <= v:
+Scan leaf pages of index, temuin pointer ke records, sampai
+entry pertama > v.
+.Pp
+.Sy Fetch records
+butuh I/O per record. Linear file scan mungkin lebih murah.
+.Ss Bagian 3.7: Complex Selection \(em Conjunction
+.Sy AND ( \(ua ):
+.Bd -literal -offset indent
+sigma_{theta1 and theta2 and ... and thetan}(r)
+.Ed
+.Sy A7 \(em Conjunctive Selection Using One Index:
+Pilih kombinasi
+.Sy theta i
+dan algoritma A1-A7 yang paling murah. Test kondisi lain
+setelah fetch ke memory buffer.
+.Sy A8 \(em Composite Index:
+Pakai composite (multiple-key) index kalau ada.
+.Sy A9 \(em Intersection of Identifiers:
+Pakai index buat tiap condition, intersect semua set of
+record pointer. Fetch records dari file.
+.Ss Bagian 3.8: Complex Selection \(em Disjunction
+.Sy OR ( \(vu ):
+.Sy A10 \(em Union of Identifiers:
+Applicable kalau semua condition punya index. Pakai index
+buat tiap condition, union semua set of record pointer.
+Fetch records dari file. Kalau nggak ada index, pakai linear
+scan.
+.Ss Bagian 3.9: Complex Selection \(em Negation
+.Sy NOT ( \(no ):
+Pakai linear scan on file. Kalau very few records satisfy
+.Sy not theta
+dan index applicable buat
+.Sy theta ,
+temuin satisfying records pakai index, fetch dari file.
+.Ss Bagian 4: Sorting
+.Sy Kenapa sorting penting?
+Banyak operasi database butuh sorted input:
+.Bl -bullet -offset indent
+.It
+Merge join.
+.It
+Duplicate elimination.
+.It
+Group by.
+.It
+Order by.
+.El
+.Sy Kalau relation fit di memory:
+Quicksort atau teknik in-memory lain.
+.Sy Kalau nggak fit:
+External sort-merge.
+.Ss Bagian 4.1: External Sort-Merge
+.Sy Fase 1 \(em Create Sorted Runs:
+.Bd -literal -offset indent
+i := 0
+while belum end of relation:
+    read M blocks ke memory
+    sort in-memory blocks
+    write sorted data ke run R_i
+    i := i + 1
+N := nilai akhir i
+.Ed
+.Sy Fase 2 \(em Merge Runs (N-way merge):
+Asumsi
+.Sy N < M .
+.Bd -literal -offset indent
+Gunakan N block memory buat buffer input runs
+Gunakan 1 block buat buffer output
+Read first block tiap run ke buffer page
+
+repeat:
+    pilih first record (in sort order) dari semua buffer
+    write ke output buffer
+    kalau output buffer full, write ke disk
+    delete record dari input buffer
+    kalau buffer page empty, read next block
+until semua input buffer empty
+.Ed
+.Ss Bagian 4.2: Kalau N >= M
+Beberapa merge pass diperlukan.
+.Bl -bullet -offset indent
+.It
+Tiap pass, contiguous group of M-1 runs di-merge.
+.It
+Pass reduces number of runs by factor M-1.
+.It
+Contoh: M=11, 90 runs \(-> 1 pass jadi 9 runs, tiap run 10x
+lebih besar.
+.El
+.Ss Bagian 4.3: Cost of External Sorting
+.Sy Block transfers:
+.Bd -literal -offset indent
+b_r * (2 * ceil(log_{M/bb - 1}(b_r / M)) + 1)
+.Ed
+.Sy bb
+= buffer blocks per run.
+.Sy Seeks:
+.Bd -literal -offset indent
+2 * ceil(b_r / M)
++ ceil(b_r / bb) * (2 * ceil(log_{M/bb - 1}(b_r / M)) - 1)
+.Ed
+.Ss Bagian 5: Join Operation
+.Sy Beberapa algoritma join:
+.Bl -bullet -offset indent
+.It
+Nested-loop join.
+.It
+Block nested-loop join.
+.It
+Indexed nested-loop join.
+.It
+Merge-join.
+.It
+Hash-join.
+.El
+.Sy Contoh data:
+.Bd -literal -offset indent
+student: 5,000 records, 100 blocks
+takes:   10,000 records, 400 blocks
+.Ed
+.Ss Bagian 5.1: Nested-Loop Join
+.Sy Algoritma:
+.Bd -literal -offset indent
+for each tuple t_r in r:
+    for each tuple t_s in s:
+        test pair (t_r, t_s) satisfy join condition
+        kalau iya, add t_r.t_s ke result
+.Ed
+.Sy r
+= outer relation.
+.Sy s
+= inner relation.
+.Pp
+.Sy Cost worst case:
+.Bd -literal -offset indent
+n_r * b_s + b_r block transfers
+n_r + b_r seeks
+.Ed
+.Sy Kalau smaller relation fit di memory:
+Pakai itu sebagai inner relation. Cost =
+.Sy b_r + b_s
+block transfers + 2 seeks.
+.Ss Bagian 5.2: Block Nested-Loop Join
+.Sy Algoritma:
+.Bd -literal -offset indent
+for each block B_r of r:
+    for each block B_s of s:
+        for each tuple t_r in B_r:
+            for each tuple t_s in B_s:
+                test join condition
+                kalau iya, add ke result
+.Ed
+.Sy Cost worst case:
+.Bd -literal -offset indent
+b_r * b_s + b_r block transfers
+2 * b_r seeks
+.Ed
+.Sy Best case:
+.Bd -literal -offset indent
+b_r + b_s block transfers + 2 seeks
+.Ed
+.Sy Improvement:
+Pakai M-2 disk blocks as blocking unit for outer relation.
+.Sy M
+= memory size in blocks.
+.Bd -literal -offset indent
+Cost = ceil(b_r / (M-2)) * b_s + b_r block transfers
+     + 2 * ceil(b_r / (M-2)) seeks
+.Ed
+.Ss Bagian 5.3: Indexed Nested-Loop Join
+.Sy Index lookups
+bisa replace file scans kalau:
+.Bl -bullet -offset indent
+.It
+Join-nya equi-join atau natural join.
+.It
+Ada index di inner relation's join attribute.
+.El
+.Sy Algoritma:
+Buat tiap tuple
+.Sy t_r
+di outer relation, pakai index buat lookup tuple
+.Sy s
+yang satisfy join condition.
+.Bd -literal -offset indent
+Cost = b_r * (tT + tS) + n_r * c
+.Ed
+.Sy c
+= cost of traversing index dan fetching matching tuple.
+.Ss Bagian 5.4: Merge-Join
+.Sy Langkah:
+.Bl -enun -offset indent
+.It
+Sort kedua relation di join attribute.
+.It
+Merge sorted relations buat join.
+.El
+.Sy Main difference dari merge sort:
+Handling duplicate values di join attribute. Setiap pair dengan
+value sama harus di-match.
+.Pp
+.Sy Cost:
+.Bd -literal -offset indent
+b_r + b_s block transfers
++ ceil(b_r / bb) + ceil(b_s / bb) seeks
++ cost of sorting kalau unsorted
+.Ed
+.Sy Hybrid merge-join:
+Kalau satu relation sorted, yang lain punya secondary B+ tree
+index di join attribute. Merge sorted relation dengan leaf
+entries of B+ tree.
+.Ss Bagian 5.5: Hash-Join
+.Sy Applicable buat:
+Equi-join dan natural join.
+.Sy Cara:
+Pakai hash function
+.Sy h
+buat partition tuple kedua relation.
+.Bd -literal -offset indent
+h: JoinAttrs -> {0, 1, ..., n}
+
+r_0, r_1, ..., r_n = partition dari r
+s_0, s_1, ..., s_n = partition dari s
+
+t_r in r_i kalau i = h(t_r[JoinAttrs])
+t_s in s_i kalau i = h(t_s[JoinAttrs])
+.Ed
+.Sy Kenapa harus partition?
+Karena r tuple di r_i cuma perlu dibandingin dengan s tuple di
+s_i. Nggak perlu dibandingin dengan partition lain.
+.Ss Bagian 5.6: Hash-Join Algorithm
+.Bd -literal -offset indent
+1. Partition relation s pakai hash function h
+2. Partition relation r similarly
+3. For each i:
+   a. Load s_i ke memory, build in-memory hash index
+      pakai join attribute
+   b. Read tuple r_i dari disk satu-satu
+      For each t_r, locate matching t_s di s_i
+      pakai in-memory hash index
+      Output concatenation
+.Ed
+.Sy s
+= build input.
+.Sy r
+= probe input.
+.Ss Bagian 5.7: Cost of Hash-Join
+.Sy Kalau recursive partitioning nggak diperlukan:
+.Bd -literal -offset indent
+3 * (b_r + b_s) + 4 * n_h block transfers
+2 * (ceil(b_r/bb) + ceil(b_s/bb)) seeks
+.Ed
+.Sy Kalau recursive partitioning diperlukan:
+.Bd -literal -offset indent
+2 * (b_r + b_s) * ceil(log_{M/bb - 1}(b_s / M))
++ b_r + b_s block transfers
+.Ed
+.Ss Bagian 5.8: Hybrid Hash-Join
+.Sy Feature:
+Keep first partition of build relation di memory.
+.Bd -literal -offset indent
+Dengan memory 25 blocks:
+instructor partitioned into 5 partitions, masing-masing 20 blocks
+First partition occupies 20 blocks memory
+1 block for input, 1 block each for buffering other 4 partitions
+.Ed
+.Sy Cost:
+.Bd -literal -offset indent
+3*(80+320) + 20 + 80 = 1300 block transfers
+dibanding 1500 dengan plain hash-join
+.Ed
+.Sy Useful kalau M >> sqrt(b_s).
+.Ss Bagian 6: Operasi Lain
+.Ss Bagian 6.1: Duplicate Elimination
+.Sy Via sorting:
+Duplicates bakal adjacent. Semua kecuali satu bisa dihapus.
+Optimization: hapus duplicates selama run generation dan
+intermediate merge.
+.Sy Via hashing:
+Duplicates bakal masuk bucket yang sama.
+.Ss Bagian 6.2: Projection
+Projection on each tuple, followed by duplicate elimination.
+.Ss Bagian 6.3: Aggregation
+Sama seperti duplicate elimination. Sorting atau hashing
+buat bawa tuple ke group yang sama.
+.Sy Optimization:
+Combine tuple di group yang sama during run generation dan
+intermediate merges, dengan compute partial aggregate values.
+.Bl -tag -width "avg" -offset indent
+.It Sy count, min, max, sum
+Keep aggregate value dari tuple yang udah ketemu.
+.It Sy count kombinasi
+Add up aggregates.
+.It Sy avg
+Keep sum dan count, divide at the end.
+.El
+.Ss Bagian 6.4: Set Operations
+.Sy Union:
+.Bd -literal -offset indent
+1. Partition r dan s pakai same hash function
+2. Process tiap partition i:
+   a. Build in-memory hash index on r_i
+   b. Add tuple s_i ke hash index kalau belum ada
+   c. Add tuple hash index ke result
+.Ed
+.Sy Intersection dan Difference:
+Partition dulu, build hash index on r_i. Process s_i:
+.Bl -bullet -offset indent
+.It
+.Sy r intersect s :
+Output tuple s_i kalau udah ada di hash index.
+.It
+.Sy r - s :
+Kalau tuple s_i ada di hash index, delete dari index. Di
+akhir, add remaining tuple ke result.
+.El
+.Ss Bagian 6.5: Outer Join
+.Sy Cara 1:
+Join followed by addition of null-padded non-participating
+tuple.
+.Sy Cara 2:
+Modify join algorithms.
+.Sy Merge-join modification:
+During merging, buat setiap tuple
+.Sy t_r
+dari
+.Sy r
+yang nggak match, output
+.Sy t_r
+padded with nulls.
+.Ss Bagian 7: Evaluasi Ekspresi
+.Sy Dua alternatif:
+.Bl -tag -width "Pipelining" -offset indent
+.It Sy Materialization
+Evaluate satu operasi at a time, simpen intermediate result
+ke temporary relation di disk.
+.It Sy Pipelining
+Pass tuple ke parent operation bahkan saat operasi masih
+executing.
+.El
+.Ss Bagian 7.1: Materialized Evaluation
+.Bd -literal -offset indent
+Compute dan store sigma_{building="Watson"}(department)
+Compute dan store join dengan instructor
+Compute projection on name
+.Ed
+.Sy Cost:
+.Bd -literal -offset indent
+Sum of individual operations
++ cost of writing intermediate results to disk
+.Ed
+.Sy Double buffering:
+Use two output buffer per operation. Ketika satu full, write
+ke disk sementara yang lain filled. Overlap disk writes dengan
+computation.
+.Ss Bagian 7.2: Pipelining
+.Sy Pipelined evaluation:
+Evaluate beberapa operasi simultaneously, pass result dari
+satu operasi ke next.
+.Sy Contoh:
+Jangan store result
+.Sy sigma Ns _{building="Watson"} Ns ( Ns department Ns ) .
+Pass tuple langsung ke join. Jangan store result join, pass
+ke projection.
+.Sy Kenapa lebih murah?
+Nggak perlu store temporary relation ke disk.
+.Sy Kapan nggak bisa pipelining?
+Sort, hash-join \(em operasi yang butuh lihat semua input
+sebelum output apapun.
+.Ss Bagian 7.3: Dua Cara Pipelining
+.Bl -tag -width "Producer-driven" -offset indent
+.It Sy Demand-driven (lazy)
+System request next tuple from top-level operation. Tiap
+operasi request next tuple dari children seperlunya.
+.It Sy Producer-driven (eager)
+Operator produce tuple eagerly, pass ke parent. Buffer
+maintained between operators.
+.El
+.Sy Istilah lain:
+Pull model (demand-driven) dan push model (producer-driven).
+.Ss Bagian 7.4: Demand-Driven Implementation
+.Sy Iterator model:
+Tiap operasi implement tiga operasi:
+.Bl -tag -width "next()" -offset indent
+.It Sy open()
+Initialize. Contoh: file scan init pointer, merge join sort
+relation.
+.It Sy next()
+Return next tuple, advance state. Contoh: file scan output
+next tuple, merge join continue merge dari state sebelumnya.
+.It Sy close()
+Cleanup.
+.El
+.Ss Bagian 7.5: Pipelining di Merge/Hash Join
+.Sy Masalah:
+Merge join dan hash join butuh tulis intermediate result ke
+disk dulu sebelum baca balik.
+.Sy Solusi:
+Hybrid hash join generate output tuple bahkan saat probe
+relation tuple di in-memory partition (partition 0) dibaca.
+.Sy Double-pipelined join:
+Hybrid hash join, modified buat buffer partition 0 tuple dari
+kedua relation di memory.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep              Inti
+Parsing             Terjemahin query ke internal form
+Optimization        Pilih plan paling murah
+Evaluation          Eksekusi plan
+Cost                Block transfers + seeks
+tT                  Time to transfer one block
+tS                  Time for one seek
+Selection           Filter baris
+Linear search       Scan semua, A1
+Index scan          Pakai index, A2-A6
+Conjunction         AND, A7-A9
+Disjunction         OR, A10
+Negation            NOT, linear scan
+External sort       Sort-merge, multi-pass
+Nested-loop join    Simple, mahal
+Block nested-loop   Per block, lebih murah
+Indexed nested-loop Pakai index di inner
+Merge-join          Sort dulu, merge
+Hash-join           Partition, build, probe
+Hybrid hash-join    Keep partition 0 di memory
+Duplicate elim      Sorting atau hashing
+Projection          Projection + dedup
+Aggregation         Sort/hash, partial aggregate
+Set operations      Partition + hash index
+Outer join          Modify join algorithms
+Materialization     Store intermediate ke disk
+Pipelining          Pass tuple ke parent
+Demand-driven       Pull model
+Producer-driven     Push model
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy cost query itu ditentuin sama jumlah block transfers dan
+seeks. Bukan sama "rumitnya" query. Query yang keliatan simpel
+bisa jadi mahal kalau algoritmanya salah. Query yang keliatan
+rumit bisa jadi murah kalau pakai index dan pipelining.
+.Pp
+Yang belum dijawab di sini: gimana caranya optimizer milih
+algoritma yang tepat? Gimana caranya estimasi cost intermediate
+result? Itu topik lanjutan: query optimization (Chapter 13)
+dan cost estimation. Kalau penasaran, cari sendiri.
+.Sh SEE ALSO
+.Xr query-optimization 1 ,
+.Xr indexing 1 ,
+.Xr storage 1
+.Sh AUTHORS
+.An mroczect
