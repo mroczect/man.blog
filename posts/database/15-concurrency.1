@@ -1,0 +1,586 @@
+.Dd 2026-10-15 20:30:00
+.Dt CONCURRENCY 1
+.Os
+.Sh NAME
+.Nm concurrency
+.Nd concurrency control, dari locking sampai snapshot isolation
+.Sh DESCRIPTION
+Ini catatan Chapter 15 dari buku Database System Concepts.
+Isinya: lock-based protocols, two-phase locking, deadlock
+handling, multiple granularity, timestamp-based protocols,
+validation-based protocols, multiversion schemes, snapshot
+isolation, insert/delete operations, index locking, weak
+levels of consistency.
+.Pp
+Bahasa santai. Tiap protokol dijelasin kenapa dia ada dan
+trade-off-nya. Karena concurrency control itu balancing act
+antara correctness dan performance.
+.Ss Bagian 1: Lock-Based Protocols
+.Sy Lock
+= mekanisme buat control concurrent access ke data item.
+.Pp
+.Sy Dua mode:
+.Bl -tag -width "Exclusive" -offset indent
+.It Sy Exclusive (X) mode
+Data item bisa dibaca dan ditulis. Request pakai
+.Sy lock-X .
+.It Sy Shared (S) mode
+Data item cuma bisa dibaca. Request pakai
+.Sy lock-S .
+.El
+.Sy Lock request
+dibuat ke concurrency-control manager. Transaction proceed
+cuma setelah request granted.
+.Ss Bagian 1.1: Compatibility Matrix
+.Bd -literal -offset indent
+         S       X
+S      true    false
+X      false   false
+.Ed
+.Sy Aturan:
+.Bl -bullet -offset indent
+.It
+Banyak transaction bisa hold shared lock di item yang sama.
+.It
+Kalau ada transaction hold exclusive lock, transaction lain
+nggak boleh hold lock apapun.
+.It
+Kalau lock nggak bisa granted, requesting transaction nunggu
+sampai incompatible lock released.
+.El
+.Ss Bagian 1.2: Contoh Locking
+.Bd -literal -offset indent
+T2:
+  lock-S(A)
+  read(A)
+  unlock(A)
+  lock-S(B)
+  read(B)
+  unlock(B)
+  display(A+B)
+.Ed
+.Sy Kenapa ini nggak cukup?
+Kalau A dan B diupdate di antara read A dan read B, sum yang
+ditampilkan salah.
+.Pp
+.Sy Solusi:
+Locking protocol. Set of rules yang diikuti semua transaction.
+Restrict set of possible schedule.
+.Ss Bagian 2: Two-Phase Locking (2PL)
+.Sy Protocol:
+.Bl -tag -width "Phase 2" -offset indent
+.It Sy Phase 1: Growing Phase
+Transaction may obtain locks. May not release locks.
+.It Sy Phase 2: Shrinking Phase
+Transaction may release locks. May not obtain locks.
+.El
+.Sy Jaminan:
+Conflict-serializable schedules.
+.Sy Lock point:
+Titik di mana transaction acquired final lock. Transaction
+dapat di-serialize di order lock point.
+.Ss Bagian 2.1: 2PL dengan Lock Conversions
+.Bl -tag -width "Phase 2" -offset indent
+.It Sy Phase 1
+.Bl -bullet -offset indent
+.It
+Acquire lock-S on item.
+.It
+Acquire lock-X on item.
+.It
+Convert lock-S ke lock-X (upgrade).
+.El
+.It Sy Phase 2
+.Bl -bullet -offset indent
+.It
+Release lock-S.
+.It
+Release lock-X.
+.It
+Convert lock-X ke lock-S (downgrade).
+.El
+.El
+.Sy Tetap butuh programmer
+buat insert locking instruction.
+.Ss Bagian 2.2: Automatic Locking
+.Sy read(D) diproses:
+.Bd -literal -offset indent
+if T_i has lock on D
+    read(D)
+else
+    if necessary wait until no other transaction has lock-X on D
+    grant T_i lock-S on D
+    read(D)
+.Ed
+.Sy write(D) diproses:
+.Bd -literal -offset indent
+if T_i has lock-X on D
+    write(D)
+else
+    if necessary wait until no other transaction has any lock on D
+    if T_i has lock-S on D
+        upgrade lock on D ke lock-X
+    else
+        grant T_i lock-X on D
+    write(D)
+.Ed
+.Sy All locks released after commit or abort.
+.Ss Bagian 3: Deadlock
+.Sy Contoh:
+.Bd -literal -offset indent
+T3                T4
+lock-X(B)
+read(B)
+B := B - 50
+write(B)
+lock-X(A)
+                  lock-S(A)
+                  read(A)
+                  lock-S(B)
+.Ed
+.Sy Masalah:
+T3 nunggu T4 release lock A, T4 nunggu T3 release lock B.
+.Sy Deadlock.
+.Pp
+.Sy Solusi:
+Roll back salah satu transaction, release locks.
+.Ss Bagian 3.1: Deadlock vs Starvation
+.Sy 2PL nggak ensure freedom from deadlock.
+.Pp
+.Sy Starvation:
+Terjadi kalau concurrency control manager badly designed.
+Contoh: transaction nunggu X-lock, sementara sequence of
+transaction request dan granted S-lock. Transaction yang sama
+repeatedly rolled back.
+.Ss Bagian 3.2: Strict dan Rigorous 2PL
+.Bl -tag -width "Rigorous" -offset indent
+.It Sy Strict 2PL
+Transaction must hold all its exclusive locks till it
+commits/aborts. Avoid cascading rollback.
+.It Sy Rigorous 2PL
+All locks held till commit/abort. Transaction dapat
+di-serialize di order commit.
+.El
+.Ss Bagian 4: Implementation of Locking
+.Sy Lock manager:
+Separate process yang terima lock/unlock request.
+.Pp
+.Sy Lock table:
+In-memory hash table indexed on data item name.
+.Pp
+.Sy Queue:
+New request added ke end of queue. Granted kalau compatible
+dengan semua earlier locks.
+.Ss Bagian 5: Deadlock Handling
+.Ss Bagian 5.1: Deadlock Prevention
+.Bl -tag -width "Timeout" -offset indent
+.It Sy Predeclaration
+Lock semua data item sebelum mulai execution.
+.It Sy Partial ordering
+Impose partial ordering ke data item. Lock hanya in order.
+.It Sy Wait-die (non-preemptive)
+Older transaction may wait for younger. Younger nggak nunggu
+older, mereka rolled back.
+.It Sy Wound-wait (preemptive)
+Older transaction wounds (force rollback) younger.
+Younger may wait for older.
+.It Sy Timeout-based
+Transaction nunggu lock hanya specified time. Kalau nggak
+dapet, rollback dan restart.
+.El
+.Ss Bagian 5.2: Deadlock Detection
+.Sy Wait-for graph:
+.Bl -bullet -offset indent
+.It
+V = set of vertices (all transaction).
+.It
+E = set of edges; ordered pair T_i -> T_j.
+.It
+Kalau T_i -> T_j in E, T_i waiting for T_j to release data item.
+.El
+.Sy System deadlocked
+jika dan hanya jika wait-for graph punya cycle.
+.Pp
+.Sy Recovery:
+.Bl -bullet -offset indent
+.It
+Pilih victim transaction yang incur minimum cost.
+.It
+Total rollback atau partial rollback.
+.It
+Include number of rollbacks in cost factor buat avoid starvation.
+.El
+.Ss Bagian 6: Multiple Granularity
+.Sy Data item
+bisa various sizes. Define hierarchy of data granularities.
+.Pp
+.Sy Contoh hierarki:
+.Bd -literal -offset indent
+          DB
+         /  \
+        A1   A2
+       /  \    \
+     Fa    Fb   Fc
+    / | \  /|\  /|\
+   r  r  r r r r r r
+.Ed
+.Sy Levels:
+database, area, file, record.
+.Pp
+.Sy Locking granularity:
+.Bl -bullet -offset indent
+.It
+Fine granularity (lower): high concurrency, high overhead.
+.It
+Coarse granularity (higher): low overhead, low concurrency.
+.El
+.Ss Bagian 6.1: Intention Lock Modes
+.Bl -tag -width "SIX" -offset indent
+.It Sy IS (Intention-Shared)
+Indicates explicit locking at lower level with shared locks.
+.It Sy IX (Intention-Exclusive)
+Indicates explicit locking at lower level with exclusive or
+shared locks.
+.It Sy SIX (Shared + Intention-Exclusive)
+Subtree locked explicitly in shared mode, plus explicit
+locking at lower level with exclusive-mode locks.
+.El
+.Sy Kenapa intention lock?
+Biar higher level node bisa di-lock S atau X tanpa harus
+check semua descendent nodes.
+.Ss Bagian 7: Timestamp-Based Protocols
+.Sy Setiap transaction
+dikasih timestamp saat enter system.
+.Sy TS(T_i) < TS(T_j)
+berarti T_i older.
+.Pp
+.Sy Protocol maintain untuk tiap data Q:
+.Bl -tag -width "W-timestamp" -offset indent
+.It Sy W-timestamp(Q)
+Largest timestamp of any transaction yang sukses write(Q).
+.It Sy R-timestamp(Q)
+Largest timestamp of any transaction yang sukses read(Q).
+.El
+.Ss Bagian 7.1: Timestamp Ordering Protocol
+.Sy Read(Q):
+.Bl -enun -offset indent
+.It
+Kalau TS(T_i) <= W-timestamp(Q), T_i perlu baca value yang udah
+overwritten. Reject, rollback T_i.
+.It
+Kalau TS(T_i) >= W-timestamp(Q), execute read, set
+R-timestamp(Q) = max(R-timestamp(Q), TS(T_i)).
+.El
+.Sy Write(Q):
+.Bl -enun -offset indent
+.It
+Kalau TS(T_i) < R-timestamp(Q), value yang diproduksi udah
+dibutuhin sebelumnya. Reject, rollback T_i.
+.It
+Kalau TS(T_i) < W-timestamp(Q), attempt to write obsolete
+value. Reject, rollback T_i.
+.It
+Otherwise, execute write, set W-timestamp(Q) = TS(T_i).
+.El
+.Ss Bagian 7.2: Thomas' Write Rule
+.Sy Modified version:
+Obsolete write operations bisa di-ignore.
+.Pp
+.Sy Kalau TS(T_i) < W-timestamp(Q):
+Daripada rollback, write di-ignore.
+.Pp
+.Sy Allows view-serializable schedules
+yang bukan conflict-serializable. Greater concurrency.
+.Ss Bagian 8: Validation-Based Protocols
+.Sy Juga disebut optimistic concurrency control.
+.Pp
+.Sy Tiga fase:
+.Bl -enun -offset indent
+.It
+.Sy Read and execution phase:
+Transaction writes only to temporary local variables.
+.It
+.Sy Validation phase:
+Transaction perform "validation test" buat determine kalau
+local variables bisa ditulis tanpa violate serializability.
+.It
+.Sy Write phase:
+Kalau validated, updates applied ke database. Kalau nggak,
+rollback.
+.El
+.Ss Bagian 8.1: Validation Test
+.Sy Setiap transaction T_i punya 3 timestamp:
+.Bl -tag -width "Finish" -offset indent
+.It Sy Start(T_i)
+Time when T_i started execution.
+.It Sy Validation(T_i)
+Time when T_i entered validation phase.
+.It Sy Finish(T_i)
+Time when T_i finished write phase.
+.El
+.Sy Validation succeeds kalau untuk semua T_j dengan
+TS(T_j) < TS(T_i), either:
+.Bl -enun -offset indent
+.It
+.Sy finish(T_j) < start(T_i) :
+Nggak ada overlap execution.
+.It
+.Sy start(T_j) < finish(T_j) < validation(T_i)
+dan set data item yang ditulis T_j nggak intersect dengan set
+data item yang dibaca T_i.
+.El
+.Ss Bagian 9: Multiversion Schemes
+.Sy Ide:
+Keep old versions of data item buat increase concurrency.
+.Pp
+.Sy Setiap write
+creates new version.
+.Sy Timestamps
+label versions.
+.Sy Read(Q):
+Select appropriate version based on timestamp. Reads never
+wait.
+.Ss Bagian 9.1: Multiversion Timestamp Ordering
+.Sy Tiap data item Q punya sequence of versions:
+.Bd -literal -offset indent
+<Q_1, Q_2, ..., Q_m>
+.Ed
+.Sy Tiap version Q_k contains:
+.Bl -bullet -offset indent
+.It
+Content (value).
+.It
+W-timestamp(Q_k) = timestamp of transaction yang create.
+.It
+R-timestamp(Q_k) = largest timestamp yang read version ini.
+.El
+.Sy Read(Q):
+Return content of version Q_k.
+.Sy Write(Q):
+.Bl -enun -offset indent
+.It
+Kalau TS(T_i) < R-timestamp(Q_k), rollback T_i.
+.It
+Kalau TS(T_i) = W-timestamp(Q_k), overwrite content.
+.It
+Else, create new version.
+.El
+.Ss Bagian 9.2: Multiversion 2PL
+.Sy Bedain read-only dan update transaction.
+.Pp
+.Sy Update transaction:
+Acquire read dan write locks, hold sampai end. Follow
+rigorous 2PL.
+.Pp
+.Sy Read-only transaction:
+Assigned timestamp dengan baca current ts-counter sebelum
+execution.
+.Ss Bagian 10: Snapshot Isolation
+.Sy Motivasi:
+Decision support queries yang baca banyak data conflict
+dengan OLTP transaction yang update beberapa row.
+.Pp
+.Sy Solusi:
+Give logical "snapshot" of database state ke read-only
+transaction.
+.Ss Bagian 10.1: Snapshot Isolation (SI)
+.Sy Transaction T1 executing dengan SI:
+.Bl -bullet -offset indent
+.It
+Takes snapshot of committed data at start.
+.It
+Always reads/modifies data in its own snapshot.
+.It
+Updates of concurrent transactions nggak visible.
+.It
+Writes of T1 complete when commit.
+.It
+First-committer-wins: commit hanya kalau nggak ada concurrent
+transaction yang udah write data yang T1 mau write.
+.El
+.Ss Bagian 10.2: Snapshot Read
+.Sy Concurrent updates invisible to snapshot read.
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+X_0 = 100, Y_0 = 0
+
+T1 deposits 50 in Y      T2 withdraws 50 from X
+r1(X0, 100)
+                         r2(Y0, 0)
+                         r2(X0, 100)
+                         w2(X2, 50)
+r1(Y0, 0)
+w1(Y1, 50)
+r1(X0, 100) (update by T2 not seen)
+r1(Y1, 50) (can see own updates)
+                         r2(Y0, 0) (update by T1 not seen)
+
+X_2 = 50, Y_1 = 50
+.Ed
+.Ss Bagian 10.3: First-Committer-Wins
+.Bd -literal -offset indent
+T1                        T2
+W(Y := 1)
+Commit
+                          Start
+                          R(X) -> 0
+                          R(Y) -> 1
+                          W(X:=2)
+                          W(Z:=3)
+                          Commit
+R(Z) -> 0
+R(Y) -> 1
+W(X:=3)
+Commit-Req
+Abort
+.Ed
+.Ss Bagian 10.4: Write Skew
+.Sy Masalah SI:
+SI nggak selalu give serializable execution.
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+T1: x:=y
+T2: y:=x
+Initially x = 3 dan y = 17
+.Ed
+.Sy Serial execution:
+Either x=3, y=3 atau x=17, y=17.
+.Sy Snapshot isolation:
+Both start at same time, neither sees other's write.
+Result: x=17, y=3 (atau sebaliknya). Inconsistent.
+.Ss Bagian 10.5: SI di Praktek
+.Bl -bullet -offset indent
+.It
+Oracle dan PostgreSQL <9.1 support SI.
+.It
+PostgreSQL 9.1 introduced "Serializable Snapshot Isolation" (SSI)
+yang guarantee true serializability.
+.It
+Can sidestep SI dengan
+.Sy select ... for update .
+.El
+.Ss Bagian 11: Insert dan Delete Operations
+.Sy Kalau pakai 2PL:
+.Bl -bullet -offset indent
+.It
+Delete operation only if transaction punya exclusive lock on
+tuple to be deleted.
+.It
+Insert operation: transaction dikasih X-mode lock on tuple.
+.El
+.Ss Bagian 11.1: Phantom Phenomenon
+.Sy Masalah:
+Transaction scan relation (e.g., find sum of balances), dan
+transaction lain insert tuple. Conflict despite not accessing
+tuple in common.
+.Pp
+.Sy Contoh:
+Scan transaction nggak lihat account baru, tapi reads some
+other tuple yang ditulis update transaction.
+.Ss Bagian 11.2: Index Locking Protocol
+.Sy Aturan:
+.Bl -bullet -offset indent
+.It
+Setiap relation harus punya minimal satu index.
+.It
+Transaction access tuple hanya setelah finding lewat index.
+.It
+Transaction yang perform lookup must lock all index leaf
+nodes yang accessed, in S-mode.
+.It
+Transaction yang insert/update/delete must obtain exclusive
+locks on all index leaf nodes affected.
+.El
+.Ss Bagian 12: Weak Levels of Consistency
+.Bl -tag -width "Cursor stability" -offset indent
+.It Sy Degree-two consistency
+S-locks may be released at any time, locks may be acquired at
+any time. X-locks held till end.
+.It Sy Cursor stability
+For reads, each tuple locked, read, lock immediately released.
+X-locks held till end.
+.El
+.Ss Bagian 12.1: SQL Isolation Levels
+.Bl -tag -width "Read uncommitted" -offset indent
+.It Sy Serializable
+Default.
+.It Sy Repeatable read
+Only committed records, repeated reads same value. Phantom
+phenomenon nggak prevented.
+.It Sy Read committed
+Same as degree two consistency, tapi kebanyakan sistem
+implement as cursor stability.
+.It Sy Read uncommitted
+Bahkan uncommitted data bisa dibaca.
+.El
+.Ss Bagian 13: Transactions Across User Interaction
+.Sy Masalah:
+Banyak aplikasi butuh transaction support across user
+interaction. Nggak bisa pakai locking. Nggak mau reserve
+database connection per user.
+.Pp
+.Sy Solusi:
+Application level concurrency control.
+.Bl -bullet -offset indent
+.It
+Each tuple punya version number.
+.It
+Transaction notes version number when reading tuple.
+.It
+When writing tuple, check current version number sama dengan
+version when tuple was read.
+.El
+.Sy Equivalent:
+Optimistic concurrency control without validating read set.
+.Sy Used:
+Hibernate ORM, dan manually in many applications.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                Inti
+Lock                  Mekanisme control access
+Exclusive lock        Read + write
+Shared lock           Read only
+Compatibility matrix  S vs S compatible, else no
+2PL                   Growing phase, shrinking phase
+Lock point            Titik di mana acquire final lock
+Strict 2PL            Hold X-locks till commit
+Rigorous 2PL          Hold all locks till commit
+Deadlock              Mutual wait
+Wait-die              Older waits younger
+Wound-wait            Older wounds younger
+Timeout               Wait for specified time
+Wait-for graph        Detect deadlock via cycle
+Granularity           Hierarchy of data items
+Intention lock        Lock higher level without check descendent
+Timestamp ordering    Order by transaction timestamp
+Thomas' Write Rule    Ignore obsolete write
+Validation            Optimistic, validate before write
+Multiversion          Keep old versions
+Snapshot isolation    Each transaction sees snapshot
+First-committer-wins  Commit hanya kalau no conflict
+Write skew            Anomaly SI
+Phantom phenomenon    Insert conflict with scan
+Index locking         Prevent phantom
+Degree-two            S-locks released anytime
+Cursor stability      Tuple locked read release
+SQL isolation level   Serializable, repeatable read,
+                      read committed, read uncommitted
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy concurrency control itu trade-off antara correctness dan
+performance. 2PL guarantee serializability tapi bisa deadlock.
+Timestamp ordering nggak deadlock tapi bisa cascading
+rollback. Snapshot isolation performa bagus tapi bisa write
+skew. Nggak ada satu protokol yang perfect buat semua kasus.
+.Pp
+Yang belum dijawab di sini: gimana caranya recovery setelah
+crash? Gimana caranya implement distributed transaction?
+Itu topik lanjutan: recovery system, distributed database.
+.Sh SEE ALSO
+.Xr transactions 1 ,
+.Xr query-processing 1 ,
+.Xr storage 1
+.Sh AUTHORS
+.An mroczect
