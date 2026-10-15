@@ -1,0 +1,389 @@
+.Dd 2026-10-15 18:30:00
+.Dt DATABASE-KONSEP 1
+.Os
+.Sh NAME
+.Nm database-konsep
+.Nd konsep dasar database, dari status Facebook sampai tiket pesawat
+.Sh DESCRIPTION
+Ini catatan praktikum pertemuan 1 mata kuliah Database. Topiknya:
+mengenali data dan sistem database di dunia nyata. Metodenya:
+individu dan diskusi. Outputnya: file PDF di-upload ke e-learning.
+.Pp
+Tapi daripada cuma jawab soal, kita bahas kenapa tiap tabel
+dirancang kayak gitu. Karena kalau cuma ngisi tabel tanpa paham
+kenapa, nanti bingung pas ketemu kasus baru.
+.Ss Bagian 1: Kenapa Sih Harus Belajar Database?
+Coba pikir. Kamu buka Facebook. Ada status, komentar, balasan
+komentar, profil orang, tanggal, tempat, link. Semua itu data.
+.Pp
+Kalau Facebook nggak punya database, gimana cara nyimpennya?
+Mungkin di file teks. Satu file per status. Tapi bayangin:
+.Bl -bullet -offset indent
+.It
+Jutaan status per hari. Miliaran komentar.
+.It
+Kamu mau cari "semua komentar Budi" \(-> harus buka semua file.
+.It
+Kamu mau hapus satu user \(-> harus edit ribuan file.
+.It
+Dua orang update profil bersamaan \(-> datanya bentrok.
+.El
+Database itu jawaban buat masalah ini. Bukan cuma "tempat
+nyimpen data", tapi "tempat nyimpen data yang bisa di-query,
+di-relate, dan konsisten walau diakses barengan".
+.Ss Bagian 2: Data, Informasi, dan Database
+Tiga istilah yang sering ketuker.
+.Bl -tag -width "Informasi" -offset indent
+.It Sy Data
+Fakta mentah. Contoh:
+.Dq Budi Rahardjo ,
+.Dq August 18 ,
+.Dq Bandung .
+Belum ada konteks.
+.It Sy Informasi
+Data yang udah ada konteksnya. Contoh: "Budi Rahardjo posting
+status di Bandung tanggal 18 Agustus". Ini baru berarti.
+.It Sy Database
+Kumpulan data yang terorganisir, disimpan, dan bisa diakses
+secara elektronik. Kuncinya: terorganisir. Bukan asal tumpuk.
+.El
+.Ss Bagian 3: Task 1 \(em Status Facebook
+Gambar 1 di modul kasih contoh status Facebook. Ada:
+.Bl -bullet -offset indent
+.It
+Status utama dari Budi Rahardjo
+.It
+Komentar dari beberapa orang
+.It
+Balasan komentar (reply)
+.It
+Info user (profil, tanggal join, alamat)
+.El
+Dari situ kita mau bikin 4 tabel:
+.Sy status ,
+.Sy comments ,
+.Sy reply_comments ,
+dan
+.Sy user .
+.Ss Bagian 3.1: Tabel Status
+.Sy Kenapa ada tabel ini?
+Karena status itu entitas sendiri. Dia punya ID, penulis, tanggal,
+tempat, isi, dan link. Tanpa tabel ini, kamu nggak bisa nyimpen
+status secara terstruktur.
+.Pp
+.Sy Struktur:
+.Bl -tag -width "Id_Status" -offset indent
+.It Id_status
+Primary key. Angka unik buat tiap status. Kenapa perlu?
+Karena nama status bisa sama, tapi ID nggak akan sama.
+.It Creator
+Siapa yang posting. Ini foreign key ke tabel
+.Sy user
+(nanti kita bahas).
+.It Date
+Kapan diposting. Format: hari, tanggal, jam.
+.It Place
+Di mana. Facebook nyimpen lokasi dari GPS atau check-in manual.
+.It Status
+Isi teksnya. Bisa panjang, bisa ada tanda kutip.
+.It Link
+URL yang di-share bareng status. Facebook auto-detect link dari
+teks, terus bikin preview card.
+.El
+.Pp
+.Sy Isi Tabel 1:
+.Bd -literal -offset indent
+Id_status  Creator        Date              Place    Status                  Link
+1          Budi Rahardjo  August 18 6:59am  Bandung  Kewarganegaraan 1.0:   Rahard.wordpress.com
+                                                    "Maka kalau sekarang
+                                                    kita masih meributkan
+                                                    tentang kewarganegaraan
+                                                    maka sebetulnya kita
+                                                    masih berada pada
+                                                    globalisasi 1.0.
+                                                    Sudah ketinggalan
+                                                    jaman."
+.Ed
+.Ss Bagian 3.2: Tabel Comments
+.Sy Kenapa dipisah dari status?
+Karena satu status bisa punya banyak komentar. Kalau komentar
+digabung di tabel status, kolomnya bakal melebar terus, dan
+jumlah komentar nggak terbatas. Ini namanya relasi one-to-many.
+.Pp
+.Sy Struktur:
+.Bl -tag -width "Id_Comment" -offset indent
+.It Id_comment
+Primary key komentar.
+.It Id_status
+Foreign key ke tabel status. Nunjukin komentar ini milik status
+yang mana.
+.It Comment
+Isi komentarnya.
+.It Commentator
+Siapa yang komentar.
+.It Date
+Kapan komentar ditulis.
+.It Time
+Jam komentar. Facebook misahin tanggal dan waktu.
+.El
+.Pp
+.Sy Isi Tabel 2 (dari gambar):
+.Bd -literal -offset indent
+Id_Status  Id_Comment  Comment                              Commentator       Date       Time
+1          1           yaaay, saya sudah di 3.0 dong prof!  Syahrul Pribadi   August 18  7:17am
+1          2           Karena perekonomian kita masih versi  Pramudya Yuanauto August 18  8:15am
+                       BETA, saya kira wajar jika proteksi
+                       dilakukan dengan Kewarganegaraan
+                       versi RC
+1          3           Setuju pak. Soal UU kewarganegaraan   Iman Fattah       August 18  7:39am
+                       ini memang framework turunan dari
+                       era Cold War dan memang harus
+                       dikaji ulang, karena negara-negara
+                       yang mengadopsi dwi kewarganegaraan
+                       terbukti banyak untungnya, terutama
+                       dari sisi ekonomi seperti India,
+                       Inggris, dsb.
+1          4           kalo memang WNA boleh jadi pejabat   Pulung Bimasakti  August 18  9:02am
+                       publik, yg perlu dimasukin expatriate Ulung
+                       adalah hakim tipikor, jaksa ama
+                       polisi.
+1          5           mungkin juga bagus, supaya gak punya   Budi Rahardjo     August 18  9:12am
+                       hubungan keluarga (kkm) sama
+                       terdakwa ya.
+.Ed
+.Ss Bagian 3.3: Tabel Reply Comments
+.Sy Kenapa dipisah lagi?
+Karena komentar bisa punya balasan. Balasan juga bisa punya
+balasan lagi. Kalau digabung ke tabel comments, kamu nggak bisa
+bedain mana komentar utama, mana balasan. Ini namanya self-
+referencing relationship.
+.Pp
+.Sy Struktur:
+.Bl -tag -width "Id_Reply" -offset indent
+.It Id_reply
+Primary key balasan.
+.It Id_status
+Foreign key ke status. Kenapa perlu? Biar kalau status dihapus,
+balasannya ikut kehapus (cascade delete).
+.It Id_comment
+Foreign key ke komentar yang dibalas. Ini yang bikin dia
+"balasan".
+.It Reply_comment
+Isi balasannya.
+.It Commentator
+Siapa yang balas.
+.It Date
+Tanggal balasan.
+.It Time
+Jam balasan.
+.El
+.Pp
+.Sy Isi Tabel 3 (dari gambar):
+.Bd -literal -offset indent
+Id_Status  Id_Comment  Id_Reply  Reply_comment                       Commentator          Date       Time
+1          2           1         Indonesia Tanah Air masih versi     Wikan Danar Sunindyo August 18  8:14am
+                                 BETA
+1          2           2         Nah tuh paham ... hihihi             Pramudya Yuanauto    August 18  8:15am
+.Ed
+.Ss Bagian 3.4: Tabel User
+.Sy Kenapa perlu?
+Karena status, komentar, dan balasan semuanya dibuat oleh user.
+Daripada nulis nama lengkap tiap kali (buang storage, rawan typo,
+susah update kalau ganti nama), mending simpan sekali di tabel
+user, terus referensi pakai ID.
+.Pp
+.Sy Struktur:
+.Bl -tag -width "Join_Date" -offset indent
+.It Email
+Unik, buat login. Jadi primary key alternatif.
+.It Password
+Disimpan dalam bentuk hash (bukan plain text). Kalau Facebook
+nyimpen password plain text, itu bencana keamanan.
+.It User_name
+Nama yang ditampilin.
+.It Profile_picture
+Path atau URL ke foto profil.
+.It Join_Date
+Kapan user daftar. Berguna buat statistik dan nostalgia.
+.It Address
+Alamat user. Opsional, banyak yang nggak isi.
+.El
+.Pp
+.Sy Isi Tabel 4 (pakai dummy data, user_name asli dari gambar):
+.Bd -literal -offset indent
+Email                    Password   User_name              Profile_picture  Join_Date    Address
+budi@example.com         hash_xxx   Budi Rahardjo          budi.jpg         20 Jan 2014  Bandung
+syahrul@example.com      hash_yyy   Syahrul Pribadi        syahrul.jpg      15 Mar 2015  Jakarta
+pramudya@example.com     hash_zzz   Pramudya Yuanauto      pramudya.jpg     02 Jul 2016  Surabaya
+wikan@example.com        hash_aaa   Wikan Danar Sunindyo   wikan.jpg        10 Nov 2013  Yogyakarta
+iman@example.com         hash_bbb   Iman Fattah            iman.jpg         22 Apr 2017  Medan
+pulung@example.com       hash_ccc   Pulung Bimasakti Ulung pulung.jpg       08 Sep 2018  Semarang
+.Ed
+.Ss Bagian 4: Task 2 \(em Flight dan Flight Details
+Gambar 2 di modul nampilin data penerbangan. Ada dua tabel yang
+perlu dibikin:
+.Sy Flight
+dan
+.Sy Flight Details .
+.Ss Bagian 4.1: Tabel Flight
+.Sy Kenapa dipisah?
+Karena satu penerbangan punya banyak detail: keberangkatan,
+kedatangan, durasi, harga per kelas, dsb. Kalau digabung, tabelnya
+jadi lebar banget dan susah di-query.
+.Pp
+.Sy Struktur:
+.Bl -tag -width "Arrival_Airport" -offset indent
+.It Flight_ID
+Primary key. Kode unik penerbangan, misal GA-123.
+.It Airline
+Maskapai. Contoh: Garuda, Lion Air, Batik Air.
+.It Departure_Airport
+Bandara asal. Kode IATA, misal CGK (Jakarta).
+.It Arrival_Airport
+Bandara tujuan. Misal DPS (Denpasar).
+.It Departure_Time
+Waktu berangkat.
+.It Arrival_Time
+Waktu tiba.
+.It Duration
+Durasi penerbangan. Bisa dihitung dari selisih waktu, tapi kadang
+disimpan terpisah buat query cepat.
+.El
+.Pp
+.Sy Contoh isi:
+.Bd -literal -offset indent
+Flight_ID  Airline      Departure  Arrival  Departure_Time  Arrival_Time  Duration
+GA-123     Garuda       CGK        DPS      2026-10-15 08:00 10:00      2h 00m
+JT-456     Lion Air     CGK        DPS      2026-10-15 10:30 12:45      2h 15m
+ID-789     Batik Air    CGK        DPS      2026-10-15 14:00 16:20      2h 20m
+.Ed
+.Ss Bagian 4.2: Tabel Flight Details
+.Sy Kenapa perlu tabel terpisah?
+Karena satu penerbangan punya banyak kelas (ekonomi, bisnis,
+first class), dan tiap kelas punya harga, sisa kursi, dan aturan
+bagasi yang beda. Kalau digabung ke tabel Flight, kamu harus
+bikin kolom
+.Sy price_economy ,
+.Sy price_business ,
+.Sy price_first ,
+dan itu nggak scalable.
+.Pp
+.Sy Struktur:
+.Bl -tag -width "Available_Seats" -offset indent
+.It Detail_ID
+Primary key.
+.It Flight_ID
+Foreign key ke tabel Flight.
+.It Class
+Kelas penerbangan: Economy, Business, First.
+.It Price
+Harga tiket per kelas.
+.It Available_Seats
+Sisa kursi.
+.It Baggage_Allowance
+Batas bagasi dalam kg.
+.El
+.Pp
+.Sy Contoh isi:
+.Bd -literal -offset indent
+Detail_ID  Flight_ID  Class     Price      Available_Seats  Baggage_Allowance
+1          GA-123     Economy   1500000    45               20
+2          GA-123     Business  3500000    8                30
+3          GA-123     First     7000000    2                40
+4          JT-456     Economy   1200000    60               20
+5          JT-456     Business  2800000    10               30
+6          ID-789     Economy   1350000    55               20
+.Ed
+.Ss Bagian 5: Task 3 \(em Contoh Software Lain
+Disuruh pilih software lain yang pakai database, jelasin fitur
+utamanya, terus identifikasi minimal 3 tabel yang mungkin dipakai.
+.Pp
+Contoh: Spotify. Fitur utamanya streaming musik, bikin playlist,
+rekomendasi lagu, dan follow artis.
+.Pp
+Tiga tabel yang mungkin ada:
+.Bl -tag -width "Playlist_Track" -offset indent
+.It Sy Tabel User
+Nyimpen data user: email, password hash, nama, tanggal daftar,
+negara, paket langganan (free/premium).
+.It Sy Tabel Track
+Nyimpen data lagu: judul, artis, album, durasi, tahun rilis,
+genre, path file audio.
+.It Sy Tabel Playlist
+Nyimpen data playlist: nama, pemilik (foreign key ke User),
+tanggal dibuat, deskripsi.
+.It Sy Tabel Playlist_Track
+Tabel junction. Karena satu playlist punya banyak lagu, dan satu
+lagu bisa ada di banyak playlist. Ini namanya relasi many-to-many.
+Isinya: playlist_id, track_id, urutan lagu di playlist.
+.El
+.Pp
+Kalau digambarkan:
+.Bd -literal -offset indent
+User  ----<  Playlist  ----<  Playlist_Track  >----  Track
+.Ed
+Artinya:
+.Bl -bullet -offset indent
+.It
+Satu user punya banyak playlist (one-to-many).
+.It
+Satu playlist punya banyak track, satu track bisa ada di banyak
+playlist (many-to-many, dijembatani Playlist_Track).
+.El
+.Ss Bagian 6: Konsep yang Kepake di Sini
+Dari dua task di atas, ada beberapa konsep database yang muncul.
+.Bl -tag -width "Foreign Key" -offset indent
+.It Sy Primary Key
+Kolom yang jadi identitas unik tiap baris. Contoh:
+.Sy Id_status ,
+.Sy Flight_ID .
+Nggak boleh duplikat, nggak boleh NULL.
+.It Sy Foreign Key
+Kolom yang nunjuk ke primary key tabel lain. Contoh:
+.Sy Id_status
+di tabel comments nunjuk ke
+.Sy Id_status
+di tabel status. Fungsinya: jaga integritas data. Kalau status
+dihapus, komentar yang nunjuk ke situ harus diapain? Ada aturan:
+cascade (ikut hapus), restrict (nggak boleh hapus kalau ada anak),
+atau set null.
+.It Sy Relasi One-to-Many
+Satu baris di tabel A bisa punya banyak baris di tabel B, tapi
+nggak sebaliknya. Contoh: satu status punya banyak komentar.
+.It Sy Relasi Many-to-Many
+Banyak baris di A bisa terkait banyak baris di B. Butuh tabel
+perantara (junction table). Contoh: playlist dan track.
+.It Sy Normalisasi
+Proses mecah tabel biar nggak ada duplikasi data. Contoh: nama
+user disimpan sekali di tabel user, bukan diulang di tiap
+komentar.
+.El
+.Ss Bagian 7: Ringkasan
+.Bd -literal -offset indent
+Konsep           Inti
+Data             Fakta mentah
+Informasi        Data yang ada konteksnya
+Database         Kumpulan data terorganisir
+Primary key      ID unik tiap baris
+Foreign key      Referensi ke tabel lain
+One-to-many      Satu A, banyak B
+Many-to-many     Banyak A, banyak B, butuh junction
+Normalisasi      Pecah tabel, hindari duplikasi
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy tabel itu bukan cuma tempat nyimpen data, tapi cerminan
+relasi antar entitas di dunia nyata.
+.Status Facebook, komentar, dan user itu tiga entitas beda yang
+saling terkait. Kalau kamu paham relasinya, kamu paham kenapa
+tabelnya harus dipisah.
+.Pp
+Yang belum dijawab di sini: gimana cara nulis query SQL buat
+ambil "semua komentar di status Budi beserta nama komentatornya"?
+Gimana caranya biar query itu cepet walau datanya miliaran baris?
+Itu topik lanjutan: SQL, indexing, dan query optimization.
+.Sh SEE ALSO
+.Xr sql 1 ,
+.Xr postgres 1 ,
+.Xr mysql 1
+.Sh AUTHORS
+.An mroczect
