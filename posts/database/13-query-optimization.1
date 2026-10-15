@@ -1,0 +1,681 @@
+.Dd 2026-10-15 19:30:00
+.Dt QUERY-OPTIMIZATION 1
+.Os
+.Sh NAME
+.Nm query-optimization
+.Nd cara database pilih plan eksekusi paling murah
+.Sh DESCRIPTION
+Ini catatan Chapter 13 dari buku Database System Concepts.
+Isinya: transformation of relational expressions, catalog
+information, statistical information, cost-based optimization,
+dynamic programming, materialized views.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+optimization itu yang bikin database bisa milih plan yang bener
+dari ribuan alternatif, dalam waktu milidetik.
+.Ss Bagian 1: Kenapa Optimizer Perlu?
+.Sy Masalah:
+Satu query bisa dieksekusi dengan banyak cara. Contoh:
+.Bd -literal -offset indent
+pi_{name, title}(
+    sigma_{dept_name="Music"}(
+        instructor natural-join teaches natural-join course
+    )
+)
+.Ed
+.Sy Alternatif 1:
+Join instructor dan teaches dulu, baru join course.
+.Sy Alternatif 2:
+Filter instructor dulu (dept_name="Music"), baru join.
+.Sy Alternatif 3:
+Filter teaches dulu (tahun tertentu), baru join.
+.Pp
+.Sy Cost difference bisa enormous.
+Detik vs hari di beberapa kasus.
+.Ss Bagian 1.1: Langkah Cost-Based Optimization
+.Bl -enun -offset indent
+.It
+Generate logically equivalent expression pakai equivalence
+rules.
+.It
+Annotate resultant expressions buat dapat alternative query
+plans.
+.It
+Pilih plan paling murah berdasarkan estimated cost.
+.El
+.Ss Bagian 2: Equivalence Rules
+.Sy Definisi:
+Dua ekspresi relational algebra equivalent kalau generate
+set of tuple yang sama di setiap legal database instance.
+.Pp
+.Sy Note:
+Order of tuple nggak penting. Di SQL, input/output itu multiset
+of tuple. Equivalent kalau generate multiset yang sama.
+.Ss Bagian 2.1: Daftar Equivalence Rules
+.Bl -tag -width "Rule 10" -offset indent
+.It Sy Rule 1
+Conjunctive selection bisa di-decompose jadi sequence of
+individual selection.
+.Bd -literal -offset indent
+sigma_{theta1 and theta2}(E) = sigma_{theta1}(sigma_{theta2}(E))
+.Ed
+.It Sy Rule 2
+Selection operations commutative.
+.Bd -literal -offset indent
+sigma_{theta1}(sigma_{theta2}(E)) = sigma_{theta2}(sigma_{theta1}(E))
+.Ed
+.It Sy Rule 3
+Cuma last projection yang perlu.
+.Bd -literal -offset indent
+pi_{L1}(pi_{L2}(...(pi_{Ln}(E))...)) = pi_{L1}(E)
+.Ed
+.It Sy Rule 4
+Selection bisa dikombinasi dengan Cartesian product dan theta join.
+.It Sy Rule 5
+Theta-join (dan natural join) commutative.
+.Bd -literal -offset indent
+E1 theta-join E2 = E2 theta-join E1
+.Ed
+.It Sy Rule 6a
+Natural join associative.
+.Bd -literal -offset indent
+(E1 natural-join E2) natural-join E3
+=
+E1 natural-join (E2 natural-join E3)
+.Ed
+.It Sy Rule 6b
+Theta join associative (dengan syarat tertentu).
+.It Sy Rule 7a
+Selection distributes over theta join kalau semua atribut di
+theta_0 cuma involve atribut E1.
+.Bd -literal -offset indent
+sigma_{theta0}(E1 theta-join E2)
+=
+(sigma_{theta0}(E1)) theta-join E2
+.Ed
+.It Sy Rule 7b
+Kalau theta_1 involve atribut E1 dan theta_2 involve atribut E2:
+.Bd -literal -offset indent
+sigma_{theta1 and theta2}(E1 theta-join E2)
+=
+(sigma_{theta1}(E1)) theta-join (sigma_{theta2}(E2))
+.Ed
+.It Sy Rule 8a
+Projection distributes over theta join.
+.Bd -literal -offset indent
+pi_{L1 union L2}(E1 theta-join E2)
+=
+(pi_{L1}(E1)) theta-join (pi_{L2}(E2))
+.Ed
+.It Sy Rule 8b
+Variant dengan L3 dan L4 buat atribut yang nggak muncul di
+L1 union L2.
+.It Sy Rule 9
+Union dan intersection commutative. Set difference nggak.
+.Bd -literal -offset indent
+E1 union E2 = E2 union E1
+E1 intersect E2 = E2 intersect E1
+.Ed
+.It Sy Rule 10
+Union dan intersection associative.
+.It Sy Rule 11
+Selection distributes over union, intersection, set difference.
+.Bd -literal -offset indent
+sigma_theta(E1 - E2) = sigma_theta(E1) - sigma_theta(E2)
+.Ed
+.It Sy Rule 12
+Projection distributes over union.
+.Bd -literal -offset indent
+pi_L(E1 union E2) = (pi_L(E1)) union (pi_L(E2))
+.Ed
+.El
+.Ss Bagian 2.2: Pictorial Depiction
+.Bd -literal -offset indent
+Rule 5:        <>theta           <>theta
+              /     \     ->    /     \
+             E1     E2        E2     E1
+
+Rule 6a:      <>                <>
+             /  \              /  \
+           <>    E3    ->    E1    <>
+          /  \                    /  \
+         E1  E2                  E2  E3
+
+Rule 7a:     sigma_theta          <>theta
+                |                /     \
+               <>theta    ->  sigma_theta  E2
+              /     \              |
+             E1     E2            E1
+.Ed
+.Ss Bagian 3: Contoh Transformasi
+.Sy Query:
+Cari nama semua instructor di Music, dengan title course
+yang mereka ajar.
+.Bd -literal -offset indent
+pi_{name, title}(
+    sigma_{dept_name="Music"}(
+        instructor natural-join
+        (teaches natural-join pi_{course_id, title}(course))
+    )
+)
+.Ed
+.Sy Transformasi pakai Rule 7a:
+Push selection down.
+.Bd -literal -offset indent
+pi_{name, title}(
+    (sigma_{dept_name="Music"}(instructor))
+    natural-join
+    (teaches natural-join pi_{course_id, title}(course))
+)
+.Ed
+.Sy Efek:
+Performing selection as early as possible reduce size of
+relation to be joined.
+.Ss Bagian 3.1: Contoh Lain
+.Sy Query:
+Instructor Music yang ngajar course di 2009, dengan title
+course.
+.Bd -literal -offset indent
+pi_{name, title}(
+    sigma_{dept_name="Music" and year=2009}(
+        instructor cross teaches cross pi_{course_id, title}(course)
+    )
+)
+.Ed
+.Sy Transformasi pakai join associativity (Rule 6a):
+.Bd -literal -offset indent
+pi_{name, title}(
+    sigma_{dept_name="Music" and year=2009}(
+        (instructor natural-join teaches)
+        natural-join
+        pi_{course_id, title}(course)
+    )
+)
+.Ed
+.Sy Lalu apply "perform selections early":
+.Bd -literal -offset indent
+sigma_{dept_name="Music"}(instructor)
+sigma_{year=2009}(teaches)
+.Ed
+.Ss Bagian 3.2: Push Projection
+.Sy Setelah selection di-push, push juga projection.
+Contoh:
+.Bd -literal -offset indent
+pi_{name, title}(
+    pi_{name, course_id}(
+        sigma_{dept_name="Music"}(instructor)
+        natural-join teaches
+    )
+    natural-join
+    pi_{course_id, title}(course)
+)
+.Ed
+.Sy Efek:
+Reduce size of relation to be joined.
+.Ss Bagian 3.3: Join Order
+.Sy Rule:
+.Bd -literal -offset indent
+(r1 join r2) join r3 = r1 join (r2 join r3)
+.Ed
+.Sy Strategi:
+Kalau
+.Sy r2 join r3
+gede dan
+.Sy r1 join r2
+kecil, pilih yang kecil dulu.
+.Sy Contoh:
+Compute
+.Sy sigma Ns _{dept_name="Music"} Ns ( Ns instructor Ns ) natural-join teaches
+dulu, baru join dengan course.
+.Kenapa?
+Cuma sedikit instructor dari Music. Jadi intermediate result
+kecil.
+.Ss Bagian 4: Cost Estimation
+.Sy Kenapa perlu estimasi?
+Optimizer harus pilih plan tanpa eksekusi query. Jadi harus
+estimasi berapa cost-nya.
+.Ss Bagian 4.1: Statistik Katalog
+.Bl -tag -width "V(A,r)" -offset indent
+.It Sy n_r
+Number of tuple di relation r.
+.It Sy b_r
+Number of block containing tuple r.
+.It Sy l_r
+Size of tuple r.
+.It Sy f_r
+Blocking factor \(em jumlah tuple r yang fit di satu block.
+.It Sy V(A,r)
+Number of distinct values yang muncul di r buat attribute A.
+.El
+.Sy Rumus:
+.Bd -literal -offset indent
+b_r = ceil(n_r / f_r)
+.Ed
+.Ss Bagian 4.2: Histogram
+.Sy Histogram
+= distribusi nilai attribute.
+.Bl -tag -width "Equi-depth" -offset indent
+.It Sy Equi-width
+Bagi range nilai jadi bucket dengan lebar sama.
+.It Sy Equi-depth
+Bagi jadi bucket dengan jumlah tuple sama.
+.El
+.Sy Contoh:
+Histogram on age.
+.Ss Bagian 4.3: Selection Size Estimation
+.Bd -literal -offset indent
+sigma_{A=v}(r)
+n_r / V(A,r): number of records yang satisfy selection
+Equality condition on key attribute: size = 1
+
+sigma_{A<=v}(r)
+c = 0 kalau v < min(A,r)
+c = n_r * (v - min(A,r)) / (max(A,r) - min(A,r))
+kalau histogram available, refine
+kalau nggak ada info, c = n_r / 2
+.Ed
+.Ss Bagian 4.4: Selectivity
+.Sy Selectivity
+dari kondisi
+.Sy theta i
+= probability tuple di r satisfy
+.Sy theta i .
+.Pp
+.Sy Kalau s_i
+= jumlah satisfying tuple:
+.Bd -literal -offset indent
+Selectivity = s_i / n_r
+.Ed
+.Ss Bagian 4.5: Conjunction/Disjunction/Negation
+.Sy Conjunction:
+.Bd -literal -offset indent
+sigma_{theta1 and theta2 and ... and thetan}(r)
+n_r * (s1 * s2 * ... * sn) / (n_r^n)
+.Ed
+.Sy Disjunction:
+.Bd -literal -offset indent
+sigma_{theta1 or theta2 or ... or thetan}(r)
+n_r * (1 - (1 - s1/n_r)*(1 - s2/n_r)*...*(1 - sn/n_r))
+.Ed
+.Sy Negation:
+.Bd -literal -offset indent
+sigma_{not theta}(r)
+n_r - size(sigma_theta(r))
+.Ed
+.Ss Bagian 4.6: Join Size Estimation
+.Sy Cartesian product:
+.Bd -literal -offset indent
+r cross s contains n_r * n_s tuple
+Tiap tuple occupies s_r + s_s bytes
+.Ed
+.Sy Kalau R intersect S = empty:
+r natural-join s = r cross s.
+.Sy Kalau R intersect S = key for R:
+Tuple s akan join dengan at most satu tuple r.
+Jumlah tuple <= n_s.
+.Sy Kalau R intersect S adalah foreign key di S referencing R:
+Jumlah tuple = n_s.
+.Ss Bagian 4.7: Join Size Tanpa Info Key
+.Sy Kalau R intersect S = {A} bukan key:
+.Sy Estimate 1:
+.Bd -literal -offset indent
+n_r * n_s / V(A,s)
+.Ed
+.Sy Estimate 2:
+.Bd -literal -offset indent
+n_r * n_s / V(A,r)
+.Ed
+.Sy Pilih yang lebih kecil.
+.Ss Bagian 5: Cost-Based Optimization
+.Ss Bagian 5.1: Join Order
+.Sy Masalah:
+Buat
+.Bd -literal -offset indent
+r1 natural-join r2 natural-join ... natural-join rn
+.Ed
+.Sy Ada berapa join order?
+.Bd -literal -offset indent
+(2*(n-1))! / (n-1)!
+.Ed
+.Sy Contoh:
+n=7 -> 665,280. n=10 -> 176 miliar!
+.Ss Bagian 5.2: Dynamic Programming
+.Sy Ide:
+Least-cost join order untuk subset tertentu di-compute sekali,
+disimpan buat dipakai lagi.
+.Sy Algoritma:
+.Bd -literal -offset indent
+findbestplan(S):
+    kalau bestplan[S].cost != infinity, return
+    kalau S contains only 1 relation:
+        bestplan[S].plan dan cost berdasarkan best way of
+        accessing S
+    else:
+        for each non-empty subset S1 of S such that S1 != S:
+            P1 = findbestplan(S1)
+            P2 = findbestplan(S - S1)
+            A = best algorithm for joining results P1 dan P2
+            cost = P1.cost + P2.cost + cost of A
+            kalau cost < bestplan[S].cost:
+                bestplan[S].cost = cost
+                bestplan[S].plan = "..."
+    return bestplan[S]
+.Ed
+.Ss Bagian 5.3: Left-Deep vs Bushy Join Trees
+.Bl -tag -width "Bushy" -offset indent
+.It Sy Left-deep
+Right-hand-side input untuk setiap join adalah relation, bukan
+hasil intermediate join.
+.It Sy Bushy
+Bisa join intermediate result dengan intermediate result.
+.El
+.Ss Bagian 5.4: Cost of Optimization
+.Sy Bushy:
+Time complexity O(3^n). Space O(2^n).
+.Sy Left-deep:
+Time complexity O(n * 2^n). Space O(2^n).
+.Sy Contoh:
+n=10 -> 59,000 (vs 176 miliar dengan enumerate semua).
+.Ss Bagian 5.5: Interesting Sort Order
+.Sy Masalah:
+Cuma cari join order terbaik per subset nggak cukup. Harus
+cari yang terbaik untuk setiap interesting sort order.
+.Sy Kenapa?
+Merge-join mungkin lebih mahal dari hash-join, tapi hasilnya
+sorted. Ini berguna buat outer level aggregation atau join
+selanjutnya.
+.Sy Contoh:
+Buat
+.Sy (r1 join r2) join r3
+dengan A sebagai common attribute:
+.Bl -bullet -offset indent
+.It
+Merge-join r1 dan r2 hasilnya sorted on A.
+.It
+Merge-join dengan r3 jadi lebih murah.
+.It
+Sort order juga berguna buat order by dan grouping.
+.El
+.Ss Bagian 5.6: Physical Equivalence Rules
+.Sy Logical query plan -> physical query plan
+dengan specify algorithm per operasi.
+.Pp
+.Sy Efficient optimizer depends on:
+.Bl -bullet -offset indent
+.It
+Space-efficient representation of expression.
+.It
+Efficient technique buat detect duplicate derivation.
+.It
+Dynamic programming based on memoization.
+.It
+Cost-based pruning.
+.El
+.Sy Pioneered by Volcano project.
+Implemented in SQL Server optimizer.
+.Ss Bagian 5.7: Heuristic Optimization
+.Sy Kenapa?
+Cost-based optimization mahal, bahkan dengan dynamic programming.
+.Sy Heuristic rules:
+.Bl -bullet -offset indent
+.It
+Perform selection early (reduce tuple).
+.It
+Perform projection early (reduce attribute).
+.It
+Perform most restrictive selection dan join operations dulu.
+.El
+.Sy Sistem:
+.Bl -bullet -offset indent
+.It
+Ada yang cuma pakai heuristic.
+.It
+Ada yang kombinasi heuristic + partial cost-based.
+.El
+.Ss Bagian 5.8: Praktek
+.Sy Banyak optimizer cuma consider left-deep join order.
+Plus heuristic buat push selection dan projection down.
+.Sy Oracle:
+Repeatedly pick "best" relation to join next. Starting from
+each of n starting points. Pick best.
+.Ss Bagian 6: Materialized Views
+.Sy Materialized view
+= view yang content-nya di-compute dan disimpen.
+.Sy Contoh:
+.Bd -literal -offset indent
+create view department_total_salary(dept_name, total_salary) as
+select dept_name, sum(salary)
+from instructor
+group by dept_name
+.Ed
+.Sy Materializing:
+Simpen hasilnya. Berguna kalau total salary per department
+sering dibutuhkan.
+.Ss Bagian 6.1: View Maintenance
+.Sy Tugas:
+Keep materialized view up-to-date dengan underlying data.
+.Pp
+.Sy Metode:
+.Bl -bullet -offset indent
+.It
+Recomputation on every update.
+.It
+Incremental view maintenance \(em pakai changes ke database
+buat compute changes ke view.
+.El
+.Ss Bagian 6.2: Differential
+.Sy i_r
+= set of tuple inserted ke r.
+.Sy d_r
+= set of tuple deleted dari r.
+.Pp
+.Sy Update:
+Replace update tuple dengan delete + insert.
+.Ss Bagian 6.3: Maintenance Join
+.Sy View v = r natural-join s.
+.Sy Insert ke r:
+.Bd -literal -offset indent
+r_new natural-join s
+= (r_old union i_r) natural-join s
+= (r_old natural-join s) union (i_r natural-join s)
+.Ed
+.Sy Incremental change:
+.Bd -literal -offset indent
+v_new = v_old union (i_r natural-join s)
+.Ed
+.Sy Delete dari r:
+.Bd -literal -offset indent
+v_new = v_old - (d_r natural-join s)
+.Ed
+.Ss Bagian 6.4: Maintenance Selection
+.Bd -literal -offset indent
+v = sigma_theta(r)
+v_new = v_old union sigma_theta(i_r)
+v_new = v_old - sigma_theta(d_r)
+.Ed
+.Ss Bagian 6.5: Maintenance Projection
+.Sy Masalah:
+Kalau tuple (a,2) dan (a,3) di r di-project ke A, hasilnya
+cuma satu tuple (a). Kalau delete (a,2), tuple (a) masih ada.
+.Sy Solusi:
+Keep count berapa kali tuple di-derive.
+.Bl -bullet -offset indent
+.It
+On insert, kalau tuple udah ada, increment count.
+.It
+On delete, decrement count. Kalau count 0, delete tuple.
+.El
+.Ss Bagian 6.6: Maintenance Aggregation
+.Bl -tag -width "min, max" -offset indent
+.It Sy count
+On insert, increment count. On delete, decrement. Kalau 0,
+delete group.
+.It Sy sum
+Maintain sum. Add/subtract B value. Maintain count buat
+detect empty group.
+.It Sy avg
+Maintain sum dan count separately, divide at the end.
+.It Sy min, max
+On insert, straightforward. On delete, harus lihat tuple lain
+di group yang sama buat cari new min/max.
+.El
+.Ss Bagian 6.7: Maintenance Set Operations
+.Bl -tag -width "Intersection" -offset indent
+.It Sy Union
+Kalau insert tuple ke r, add ke v. Kalau delete, delete dari v.
+.It Sy Intersection
+Kalau insert tuple ke r, cek ada di s. Kalau iya, add ke v.
+Kalau delete dari r, delete dari v kalau ada.
+.It Sy Set difference
+Similar logic.
+.El
+.Ss Bagian 6.8: Maintenance Expressions
+.Sy Untuk ekspresi kompleks
+.Bd -literal -offset indent
+E1 natural-join E2
+.Ed
+.Sy Kalau insert D1 ke E1:
+Insert ke E1 natural-join E2 = D1 natural-join E2.
+.Sy Ini cuma cara biasa maintain join.
+.Ss Bagian 6.9: Rewriting Queries
+.Sy Materialized view v = r natural-join s.
+User submit query
+.Sy r natural-join s natural-join t .
+Bisa rewrite jadi
+.Sy v natural-join t .
+.Pp
+.Sy Tergantung cost estimates.
+.Ss Bagian 6.10: View Selection
+.Sy Pertanyaan:
+View apa yang sebaiknya di-materialize?
+.Sy Related:
+Index selection \(em index apa yang sebaiknya dibuat?
+.Sy Basis:
+Typical system workload (query dan update).
+.Sy Goal:
+Minimize time to execute workload.
+.Sy Tools:
+Commercial database provide "tuning assistants" atau "wizards".
+.Ss Bagian 7: Topik Tambahan
+.Ss Bagian 7.1: Top-K Queries
+.Bd -literal -offset indent
+select * from r, s
+where r.B = s.B
+order by r.A ascending
+limit 10
+.Ed
+.Sy Alternatif 1:
+Indexed nested loops join dengan r sebagai outer.
+.Sy Alternatif 2:
+Estimate highest r.A value di result, tambah selection
+.Sy r.A <= H
+ke where clause.
+.Ss Bagian 7.2: Halloween Problem
+.Bd -literal -offset indent
+update R set A = 5 * A where A > 10
+.Ed
+.Sy Masalah:
+Kalau index on A dipakai buat temuin tuple dengan A > 10, dan
+tuple di-update immediately, tuple yang sama bisa ketemu
+( dan di-update) berkali-kali.
+.Sy Solusi 1:
+Always defer updates. Collect updates, update relation dan
+index di second pass.
+.Sy Solusi 2:
+Defer only if required. Immediate update kalau update nggak
+affect attribute di where clause.
+.Ss Bagian 7.3: Join Minimization
+.Bd -literal -offset indent
+select r.A, r.B from r, s where r.B = s.B
+.Ed
+.Sy Check:
+Kalau join dengan s redundant, drop.
+.Sy Contoh kondisi:
+Join condition on foreign key dari r ke s, r.B declared as
+not null, no selection on s.
+.Ss Bagian 7.4: Multiquery Optimization
+.Sy Contoh:
+.Bd -literal -offset indent
+Q1: select * from (r natural join t) natural join s
+Q2: select * from (r natural join u) natural join s
+.Ed
+.Sy Common subexpression:
+.Sy r natural-join s
+bisa di-compute sekali dan dipakai di kedua query.
+.Pp
+.Sy Tapi mungkin lebih mahal di beberapa situasi.
+.Ss Bagian 7.5: Parametric Query Optimization
+.Bd -literal -offset indent
+select * from r natural join s where r.a < $1
+.Ed
+.Sy Masalah:
+Nilai $1 nggak diketahui at compile time. Cuma tahu at run time.
+.Sy Solusi 1:
+Optimize at run time, tiap kali query submitted.
+.Sy Solusi 2:
+Parametric query optimization. Optimizer generate set of plan,
+optimal buat nilai $1 berbeda.
+.Sy Solusi 3:
+Query plan caching. Kalau optimizer decide same plan optimal
+buat all parameter value, cache dan reuse.
+.Ss Bagian 7.6: Optimizer Upgrade
+.Sy Masalah:
+Kalau 95% plan lebih cepet di versi N+1, tapi 5% lebih
+lambat. Gimana?
+.Sy Jawab:
+"Two wrongs can make a right. Fixing one wrong can make
+things worse."
+.Sy Approach:
+.Bl -bullet -offset indent
+.It
+Allow hints untuk tuning query.
+.It
+Set optimization level, default ke versi N (Oracle).
+.It
+Save plan dari versi N, kasih ke versi N+1 (Sybase,
+SQL Server).
+.El
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep              Inti
+Equivalence rule    Aturan transformasi ekspresi
+Rule 1-4            Selection-related
+Rule 5-6            Join commutative/associative
+Rule 7-8            Selection/projection distributes
+Rule 9-12           Set operations
+Cost estimation     Estimasi cost tanpa eksekusi
+Statistik katalog   n_r, b_r, l_r, f_r, V(A,r)
+Histogram           Distribusi nilai attribute
+Selectivity         Probability tuple satisfy kondisi
+Join size estimate  Estimasi jumlah tuple hasil join
+Dynamic programming Simpan best plan per subset
+Left-deep tree      Join tree dengan relation di kanan
+Bushy tree          Join tree bebas
+Interesting order   Sort order yang berguna nanti
+Heuristic optim     Perform selection early
+Materialized view   View yang disimpen fisik
+View maintenance    Keep view up-to-date
+Incremental view    Compute changes, bukan recompute
+Top-K               Limit results
+Halloween problem   Update yang bikin tuple di-update 2x
+Multiquery optim    Sharing antar query
+Parametric optim    Plan untuk different parameter value
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy optimizer itu nyari plan yang murah, tapi nggak bisa
+enumerate semua kemungkinan. Dia pakai dynamic programming,
+heuristic, dan cost estimation buat narrow down search space.
+Hasilnya bukan selalu plan optimal, tapi cukup bagus dalam
+waktu yang wajar.
+.Pp
+Yang belum dijawab di sini: gimana caranya ngukur akurasi
+estimasi? Kapan heuristic lebih baik dari cost-based? Gimana
+caranya handle query yang kompleks (nested subquery)? Itu
+topik lanjutan: adaptive query optimization, machine learning
+for query optimization. Kalau penasaran, cari sendiri.
+.Sh SEE ALSO
+.Xr query-processing 1 ,
+.Xr indexing 1 ,
+.Xr storage 1
+.Sh AUTHORS
+.An mroczect
