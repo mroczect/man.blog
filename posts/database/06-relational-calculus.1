@@ -1,0 +1,584 @@
+.Dd 2026-10-15 18:30:00
+.Dt RELATIONAL-CALCULUS 1
+.Os
+.Sh NAME
+.Nm relational-calculus
+.Nd bahasa query formal: relational algebra dan calculus
+.Sh DESCRIPTION
+Ini catatan Chapter 6 dari buku Database System Concepts. Isinya:
+tiga bahasa query formal \(em relational algebra, tuple relational
+calculus, dan domain relational calculus.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena tiga
+bahasa ini adalah fondasi teoritis SQL. Kalau kamu paham mereka,
+SQL cuma syntax.
+.Ss Bagian 1: Kenapa Belajar Bahasa Formal?
+SQL itu bahasa query
+.Sy deklaratif
+\(em kamu bilang APA yang kamu mau, bukan GIMANA caranya.
+Tapi di balik layar, database nerjemahin SQL kamu jadi
+.Sy bahasa formal
+yang lebih primitif, yang bisa dioptimize.
+.Pp
+Ada tiga bahasa formal:
+.Bl -tag -width "Relational Calculus" -offset indent
+.It Sy Relational Algebra
+Bahasa
+.Sy prosedural
+\(em kamu bilang GIMANA caranya.
+.It Sy Tuple Relational Calculus
+Bahasa
+.Sy non-prosedural
+\(em kamu bilang APA yang kamu mau, dalam bentuk tuple.
+.It Sy Domain Relational Calculus
+Bahasa non-prosedural, tapi berbasis domain variable, bukan tuple.
+.El
+.Sy Ketiganya equivalent in power.
+Artinya, apapun yang bisa di-express di satu bahasa, bisa di-express
+di dua bahasa lainnya. Bedanya cuma cara ngomongnya.
+.Ss Bagian 2: Relational Algebra
+.Sy Enam operator dasar:
+.Bl -tag -width "Cartesian product" -offset indent
+.It Sy Selection ( \(*s )
+Filter baris.
+.Bd -literal -offset indent
+sigma_{p}(r) = { t | t element r and p(t) }
+.Ed
+.It Sy Projection ( \(*P )
+Ambil kolom tertentu.
+.Bd -literal -offset indent
+pi_{A1, A2, ..., Ak}(r)
+.Ed
+.It Sy Union ( \(cu )
+Gabung himpunan.
+.Bd -literal -offset indent
+r union s = { t | t element r or t element s }
+.Ed
+.It Sy Set Difference ( \(mi )
+Kurangi himpunan.
+.Bd -literal -offset indent
+r - s = { t | t element r and t not-in s }
+.Ed
+.It Sy Cartesian Product ( \(mu )
+Semua kombinasi.
+.Bd -literal -offset indent
+r times s = { t q | t element r and q element s }
+.Ed
+.It Sy Rename ( \(sr )
+Kasih nama.
+.Bd -literal -offset indent
+rho_{x}(E)
+.Ed
+.El
+.Ss Bagian 2.1: Selection ( \(*s )
+.Sy Notasi:
+.Sy sigma Ns _p Ns ( Ns Ar r Ns )
+.Pp
+.Sy p
+disebut
+.Sy selection predicate
+\(em formula di propositional calculus, terdiri dari term yang
+dihubungin pakai:
+.Bl -bullet -offset indent
+.It
+.Sy and ( \(ua )
+.It
+.Sy or ( \(vu )
+.It
+.Sy not ( \(no )
+.El
+.Sy Setiap term
+bentuknya:
+.Bd -literal -offset indent
+<attribute> op <attribute>
+<attribute> op <constant>
+.Ed
+.Sy op
+bisa:
+.Sy = No , != , > , >= , < , <= .
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+sigma_{dept_name = "Physics"}(instructor)
+.Ed
+Ambil semua instructor yang di departemen Physics.
+.Ss Bagian 2.2: Projection ( \(*P )
+.Sy Notasi:
+.Sy pi Ns _{A1, A2, ..., Ak} Ns ( Ns Ar r Ns )
+.Pp
+.Sy Hasilnya:
+relation dengan
+.Ar k
+kolom, kolom yang nggak disebut dihapus.
+.Pp
+.Sy Duplikat dihapus
+karena relation itu set. Ini yang sering bikin bingung kalau kamu
+bandingin sama SQL yang default-nya
+.Sy nggak
+hapus duplikat.
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+pi_{ID, name, salary}(instructor)
+.Ed
+Ambil ID, name, salary aja. Kolom dept_name dihapus.
+.Ss Bagian 2.3: Union ( \(cu )
+.Sy Notasi:
+.Sy r \(cu s .
+.Pp
+.Sy Syarat:
+.Bl -enun -offset indent
+.It
+.Sy r
+dan
+.Sy s
+harus punya
+.Sy arity
+(jumlah atribut) yang sama.
+.It
+Domain atributnya harus kompatibel. Contoh: kolom ke-2
+.Sy r
+harus tipe yang sama dengan kolom ke-2
+.Sy s .
+.El
+.Sy Contoh:
+Cari semua course yang jalan di Fall 2009 ATAU Spring 2010.
+.Bd -literal -offset indent
+pi_{course_id}(sigma_{semester="Fall" and year=2009}(section))
+union
+pi_{course_id}(sigma_{semester="Spring" and year=2010}(section))
+.Ed
+.Ss Bagian 2.4: Set Difference ( \(mi )
+.Sy Notasi:
+.Sy r \(mi s .
+.Pp
+.Sy Syarat:
+Sama kayak union \(em arity sama, domain kompatibel.
+.Pp
+.Sy Contoh:
+Course yang jalan di Fall 2009 TAPI NGGAK di Spring 2010.
+.Bd -literal -offset indent
+pi_{course_id}(sigma_{semester="Fall" and year=2009}(section))
+-
+pi_{course_id}(sigma_{semester="Spring" and year=2010}(section))
+.Ed
+.Ss Bagian 2.5: Intersection ( \(ca )
+.Sy Notasi:
+.Sy r \(ca s .
+.Pp
+.Sy Definisi:
+.Bd -literal -offset indent
+r intersection s = { t | t element r and t element s }
+.Ed
+.Sy Bisa dibangun dari set difference:
+.Bd -literal -offset indent
+r intersection s = r - (r - s)
+.Ed
+.Sy Kenapa bukan operator dasar?
+Karena dia bisa diturunin dari set difference. Tapi SQL tetap
+support
+.Sy INTERSECT
+biar ringkas.
+.Ss Bagian 2.6: Cartesian Product ( \(mu )
+.Sy Notasi:
+.Sy r \(mu s .
+.Pp
+.Sy Definisi:
+.Bd -literal -offset indent
+r times s = { t q | t element r and q element s }
+.Ed
+.Sy Asumsi:
+Atribut
+.Sy r Ns ( Ns Ar R Ns )
+dan
+.Sy s Ns ( Ns Ar S Ns )
+disjoint. Artinya
+.Sy R \(ca S No = empty .
+.Pp
+.Sy Kalau nggak disjoint?
+Harus rename. Karena kalau ada nama atribut yang sama, hasilnya
+ambigu.
+.Ss Bagian 2.7: Rename ( \(sr )
+.Sy Notasi:
+.Sy rho Ns _x Ns ( Ns Ar E Ns ) .
+.Pp
+.Sy Fungsinya:
+.Bl -bullet -offset indent
+.It
+Kasih nama ke hasil ekspresi relational algebra.
+.It
+Refer ke satu relation pakai banyak nama.
+.El
+.Sy Contoh:
+.Bd -literal -offset indent
+rho_{x}(E)
+.Ed
+Return expression
+.Ar E
+dengan nama
+.Sy x .
+.Pp
+.Sy Kalau ekspresi punya arity n:
+.Bd -literal -offset indent
+rho_{x(A1, A2, ..., An)}(E)
+.Ed
+Return
+.Ar E
+dengan nama
+.Sy x ,
+dan atributnya di-rename jadi
+.Sy A1 No , A2 No , ..., An .
+.Ss Bagian 2.8: Definisi Formal Ekspresi
+.Sy Basic expression
+terdiri dari:
+.Bl -bullet -offset indent
+.It
+Relation di database.
+.It
+Constant relation.
+.El
+.Sy Kalau E1 dan E2 adalah ekspresi relational algebra:
+.Bl -bullet -offset indent
+.It
+.Sy E1 \(cu E2
+.It
+.Sy E1 \(mi E2
+.It
+.Sy E1 \(mu E2
+.It
+.Sy sigma Ns _p Ns ( Ns Ar E1 Ns ) ,
+di mana
+.Sy p
+adalah predicate.
+.It
+.Sy pi Ns _s Ns ( Ns Ar E1 Ns ) ,
+di mana
+.Sy s
+adalah list atribut.
+.It
+.Sy rho Ns _x Ns ( Ns Ar E1 Ns ) ,
+di mana
+.Sy x
+nama baru.
+.El
+.Ss Bagian 3: Tuple Relational Calculus
+.Sy Bahasa non-prosedural.
+Setiap query bentuknya:
+.Bd -literal -offset indent
+{ t | P(t) }
+.Ed
+.Sy Artinya:
+himpunan semua tuple
+.Ar t
+sedemikian sehingga
+.Sy P Ns ( Ns Ar t Ns )
+true.
+.Pp
+.Sy Notasi:
+.Bl -tag -width "t element r" -offset indent
+.It Ar t
+tuple variable.
+.It Sy t Ns [ Ns Ar A Ns ]
+nilai tuple
+.Ar t
+di atribut
+.Ar A .
+.It Sy t \(mo r
+tuple
+.Ar t
+ada di relation
+.Ar r .
+.El
+.Ss Bagian 3.1: Formula di Tuple Calculus
+.Ar P
+adalah formula yang terdiri dari:
+.Bl -enun -offset indent
+.It
+Set atribut dan constant.
+.It
+Set comparison operator:
+.Sy < No , <= , = , != , > , >= .
+.It
+Set connective:
+.Sy and ( \(ua ) , or ( \(vu ) , not ( \(no ) .
+.It
+Implikasi:
+.Sy x \(-> y
+equivalent dengan
+.Sy not x or y .
+.It
+Quantifier:
+.Bd -literal -offset indent
+exists t element r (Q(t))
+    "there exists" tuple t di r
+    sedemikian Q(t) true
+
+forall t element r (Q(t))
+    Q true "untuk semua" tuple t di r
+.Ed
+.El
+.Ss Bagian 3.2: Contoh Tuple Calculus
+.Sy Contoh 1:
+Cari ID, name, dept_name, salary dosen dengan gaji > 80000.
+.Bd -literal -offset indent
+{ t | t element instructor and t[salary] > 80000 }
+.Ed
+.Sy Notice:
+Relation dengan schema (ID, name, dept_name, salary) itu
+.Sy implicit
+didefinisiin oleh query. Kamu nggak perlu bilang schema-nya
+secara eksplisit.
+.Pp
+.Sy Contoh 2:
+Cuma output ID-nya aja.
+.Bd -literal -offset indent
+{ t | exists s element instructor
+       (t[ID] = s[ID] and s[salary] > 80000) }
+.Ed
+.Sy Notice:
+Schema-nya sekarang (ID) doang. Karena
+.Ar t
+cuma punya atribut ID.
+.Pp
+.Sy Contoh 3:
+Nama dosen yang departemennya di gedung Watson.
+.Bd -literal -offset indent
+{ t | exists s element instructor (
+        t[name] = s[name] and
+        exists u element department (
+            u[dept_name] = s[dept_name] and
+            u[building] = "Watson"
+        )
+      )
+}
+.Ed
+.Pp
+.Sy Contoh 4:
+Course yang jalan di Fall 2009 ATAU Spring 2010.
+.Bd -literal -offset indent
+{ t | exists s element section (
+        t[course_id] = s[course_id] and
+        s[semester] = "Fall" and s[year] = 2009
+      )
+      or
+      exists u element section (
+        t[course_id] = u[course_id] and
+        u[semester] = "Spring" and u[year] = 2010
+      )
+}
+.Ed
+.Pp
+.Sy Contoh 5:
+Course yang jalan di Fall 2009 DAN Spring 2010.
+.Bd -literal -offset indent
+{ t | exists s element section (
+        t[course_id] = s[course_id] and
+        s[semester] = "Fall" and s[year] = 2009
+      )
+      and
+      exists u element section (
+        t[course_id] = u[course_id] and
+        u[semester] = "Spring" and u[year] = 2010
+      )
+}
+.Ed
+.Pp
+.Sy Contoh 6:
+Course yang jalan di Fall 2009 TAPI NGGAK di Spring 2010.
+.Bd -literal -offset indent
+{ t | exists s element section (
+        t[course_id] = s[course_id] and
+        s[semester] = "Fall" and s[year] = 2009
+      )
+      and not exists u element section (
+        t[course_id] = u[course_id] and
+        u[semester] = "Spring" and u[year] = 2010
+      )
+}
+.Ed
+.Pp
+.Sy Contoh 7:
+Student yang udah ambil
+.Sy semua
+course yang ditawarin di departemen Biology.
+.Bd -literal -offset indent
+{ t | exists r element student (t[ID] = r[ID]) and
+      forall u element course (
+        u[dept_name] = "Biology" implies
+        exists s element takes (
+          t[ID] = s[ID] and
+          s[course_id] = u[course_id]
+        )
+      )
+}
+.Ed
+.Sy Cara baca:
+"Untuk setiap course u di Biology, harus ada tuple di takes yang
+nunjukin student t udah ambil course u."
+.Ss Bagian 3.3: Safety of Expressions
+.Sy Masalah:
+Bisa nulis tuple calculus expression yang generate
+.Sy infinite relation .
+Contoh:
+.Bd -literal -offset indent
+{ t | t not-in r }
+.Ed
+Kalau domain atribut
+.Ar r
+infinite, hasilnya infinite.
+.Pp
+.Sy Solusi:
+Batasi ekspresi ke
+.Sy safe expressions .
+.Pp
+.Sy Definisi:
+Ekspresi
+.Sy { t | P(t) }
+safe kalau
+.Sy setiap komponen t
+muncul di salah satu relation, tuple, atau constant yang muncul
+di
+.Sy P .
+.Pp
+.Sy Contoh unsafe:
+.Bd -literal -offset indent
+{ t | t[A] = 5 and true }
+.Ed
+Ini nggak safe karena
+.Ar t
+nggak dibatasi ke relation apapun. Hasilnya infinite.
+.Pp
+.Sy Kenapa penting?
+Karena expression yang unsafe nggak bisa di-evaluate. Database
+harus bisa mastiin query-nya return finite set.
+.Ss Bagian 4: Domain Relational Calculus
+.Sy Bahasa non-prosedural
+yang equivalent in power sama tuple relational calculus.
+.Pp
+.Sy Bedanya:
+Kalau tuple calculus pakai
+.Sy tuple variable
+( yang nilainya satu baris penuh), domain calculus pakai
+.Sy domain variable
+( yang nilainya satu nilai atribut doang).
+.Pp
+.Sy Bentuk query:
+.Bd -literal -offset indent
+{ <x1, x2, ..., xn> | P(x1, x2, ..., xn) }
+.Ed
+.Sy Notasi:
+.Bl -bullet -offset indent
+.It
+.Sy x1, x2, ..., xn
+domain variable.
+.It
+.Sy P
+formula serupa predicate calculus.
+.El
+.Ss Bagian 4.1: Contoh Domain Calculus
+.Sy Contoh 1:
+Cari ID, name, dept_name, salary dosen dengan gaji > 80000.
+.Bd -literal -offset indent
+{ <i, n, d, s> | <i, n, d, s> element instructor and s > 80000 }
+.Ed
+.Sy Contoh 2:
+Cuma output ID-nya aja.
+.Bd -literal -offset indent
+{ <i> | <i, n, d, s> element instructor and s > 80000 }
+.Ed
+.Sy Contoh 3:
+Nama dosen yang departemennya di gedung Watson.
+.Bd -literal -offset indent
+{ <n> | exists i, d, s (
+          <i, n, d, s> element instructor and
+          exists b, bud (
+              <d, b, bud> element department and
+              b = "Watson"
+          )
+        )
+}
+.Ed
+.Ss Bagian 4.2: Safety of Domain Expressions
+.Sy Ekspresi:
+.Bd -literal -offset indent
+{ <x1, x2, ..., xn> | P(x1, x2, ..., xn) }
+.Ed
+.Sy Safe
+kalau:
+.Bl -enun -offset indent
+.It
+Semua nilai yang muncul di tuple ekspresi berasal dari
+.Sy dom(P)
+\(em himpunan nilai yang muncul di
+.Sy P
+atau di tuple relation yang disebut di
+.Sy P .
+.It
+Untuk setiap subformula
+.Sy exists x(P1(x)) ,
+subformula true kalau dan hanya kalau ada nilai
+.Ar x
+di
+.Sy dom(P1)
+sedemikian
+.Sy P1(x)
+true.
+.It
+Untuk setiap subformula
+.Sy forall x(P1(x)) ,
+subformula true kalau dan hanya kalau
+.Sy P1(x)
+true untuk semua nilai
+.Ar x
+dari
+.Sy dom(P1) .
+.El
+.Ss Bagian 5: Perbandingan Tiga Bahasa
+.Bd -literal -offset indent
+Aspek            Relational Algebra  Tuple Calc        Domain Calc
+Gaya             Prosedural          Non-prosedural    Non-prosedural
+Unit dasar       Relation            Tuple variable    Domain variable
+Power            Equivalent          Equivalent        Equivalent
+Dipakai di SQL   Ya (sebagai dasar)  Tidak langsung    Tidak langsung
+.Ed
+.Sy Kenapa tiga-tiganya equivalent?
+Karena mereka nge-express hal yang sama dengan cara yang beda.
+Relational algebra bilang "gimana caranya" (procedural). Tuple dan
+domain calculus bilang "apa yang mau" (declarative).
+.Pp
+.Sy SQL itu campuran.
+Dia declarative secara surface (kamu bilang "apa"), tapi optimizer
+di belakang layar nerjemahin jadi relational algebra (procedural)
+buat eksekusi.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep              Inti
+Relational algebra  Bahasa prosedural, 6 operator dasar
+Selection (sigma)   Filter baris
+Projection (pi)     Filter kolom
+Union               Gabung himpunan
+Set difference      Kurangi himpunan
+Cartesian product   Semua kombinasi
+Rename (rho)        Kasih nama
+Intersection        r intersect s = r - (r - s)
+Tuple calculus      { t | P(t) }
+Domain calculus     { <x1,...,xn> | P(x1,...,xn) }
+Safe expression     Ekspresi yang nggak infinite
+Quantifier exists   "Ada minimal satu"
+Quantifier forall   "Untuk semua"
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy relational algebra, tuple calculus, dan domain calculus itu
+tiga cara ngomong hal yang sama. Kemampuan mereka identik.
+Bedanya cuma gaya: prosedural vs deklaratif.
+.Pp
+Yang belum dijawab di sini: gimana caranya database mengubah SQL
+jadi relational algebra? Kenapa optimizer lebih suka bentuk
+tertentu? Itu topik lanjutan: query optimization dan execution
+plan. Kalau penasaran, cari sendiri.
+.Sh SEE ALSO
+.Xr relational-model 1 ,
+.Xr sql-intro 1 ,
+.Xr database-intro 1
+.Sh AUTHORS
+.An mroczect
