@@ -1,0 +1,1035 @@
+.Dd 2026-10-15 18:30:00
+.Dt SQL-INTRO 1
+.Os
+.Sh NAME
+.Nm sql-intro
+.Nd pengantar SQL, dari bikin tabel sampai subquery
+.Sh DESCRIPTION
+Ini catatan Chapter 3 dari buku Database System Concepts. Isinya:
+DDL, query dasar, operasi tambahan, set operations, null, aggregate,
+subquery, dan modifikasi data.
+.Pp
+Bahasa santai. Tiap perintah dijelasin kenapa dia ada, bukan cuma
+syntaxnya. Karena kalau cuma hafal syntax, lupa. Kalau paham
+konsepnya, syntax bisa dicari.
+.Ss Bagian 1: SQL Itu Apa?
+SQL = Structured Query Language. Dibikin IBM tahun 70-an, awalnya
+namanya SEQUEL (dari System R project di IBM San Jose). Terus
+di-rename jadi SQL.
+.Pp
+Standarisasi:
+.Bl -bullet -offset indent
+.It
+SQL-86, SQL-89, SQL-92
+.It
+SQL:1999 (namanya jadi Y2K compliant)
+.It
+SQL:2003
+.El
+.Kenapa perlu standar?
+Karena tanpa standar, tiap database punya bahasa sendiri. Kamu
+belajar MySQL, pindah ke Oracle harus belajar dari nol. Dengan
+standar, 90% syntax sama, cuma fitur proprietary yang beda.
+.Pp
+Catatan: nggak semua contoh di sini jalan di database kamu.
+Karena setiap vendor (PostgreSQL, MySQL, Oracle, SQL Server)
+punya extension sendiri. SQL-92 itu baseline, selebihnya variasi.
+.Ss Bagian 2: DDL \(em Data Definition Language
+DDL itu bahasa buat define struktur database. Bukan buat isi data,
+tapi buat bikin "wadahnya".
+.Pp
+Yang bisa didefinisiin pakai DDL:
+.Bl -bullet -offset indent
+.It
+Schema tiap relation (tabel)
+.It
+Domain nilai tiap atribut (tipe data)
+.It
+Integrity constraints
+.It
+Index yang perlu dimaintain
+.It
+Security dan authorization
+.It
+Physical storage structure di disk
+.El
+.Ss Bagian 2.1: Tipe Data
+Sebelum bikin tabel, harus tau tipe data yang tersedia:
+.Bl -tag -width "numeric(p,d)" -offset indent
+.It Sy char(n)
+Fixed-length string, panjang n. Kalau isinya kurang dari n, di-pad
+spasi. Boros storage, tapi cepet.
+.It Sy varchar(n)
+Variable-length string, maksimum n. Nggak di-pad. Lebih hemat,
+tapi kalau update jadi lebih panjang, bisa lambat.
+.It Sy int
+Integer. Ukurannya tergantung mesin.
+.It Sy smallint
+Integer kecil. Buat hemat storage kalau nilainya nggak besar.
+.It Sy numeric(p,d)
+Fixed-point. p = total digit, d = digit di belakang koma.
+Contoh:
+.Sy numeric(3,1)
+bisa nyimpen 44.5, tapi nggak bisa 444.5 (terlalu panjang) atau
+0.32 (cuma 1 digit belakang koma).
+.It Sy real, double precision
+Floating point. Real = single, double precision = double.
+.It Sy float(n)
+Floating point dengan presisi minimal n digit.
+.El
+.Sy Kenapa ada char dan varchar?
+Karena trade-off. char cepet tapi boros. varchar hemat tapi
+update-nya lebih lambat. Buat kode pos (selalu 5 digit), pakai
+char(5). Buat nama (bisa 3 huruf bisa 50 huruf), pakai varchar.
+.Ss Bagian 2.2: CREATE TABLE
+Syntax umum:
+.Bd -literal -offset indent
+create table r (
+    A1 D1,
+    A2 D2,
+    ...,
+    An Dn,
+    integrity-constraint,
+    ...
+)
+.Ed
+.Keterangan:
+.Bl -bullet -offset indent
+.It
+.Sy r
+= nama tabel
+.It
+.Sy Ai
+= nama atribut (kolom)
+.It
+.Sy Di
+= tipe data atribut
+.El
+Contoh:
+.Bd -literal -offset indent
+create table instructor (
+    ID         char(5),
+    name       varchar(20),
+    dept_name  varchar(20),
+    salary     numeric(8,2)
+)
+.Ed
+.Ss Bagian 2.3: Integrity Constraints
+Tiga constraint yang penting:
+.Bl -tag -width "foreign key" -offset indent
+.It Sy not null
+Kolom ini nggak boleh kosong. Contoh: nama dosen harus ada.
+.It Sy primary key (A1, ..., An)
+Kolom ini jadi identitas unik tiap baris. Otomatis
+.Sy not null .
+Nggak boleh duplikat.
+.It Sy foreign key (Am, ..., An) references r
+Kolom ini nunjuk ke primary key tabel lain. Fungsinya jaga
+integritas data antar tabel.
+.El
+Contoh lengkap:
+.Bd -literal -offset indent
+create table instructor (
+    ID         char(5),
+    name       varchar(20) not null,
+    dept_name  varchar(20),
+    salary     numeric(8,2),
+    primary key (ID),
+    foreign key (dept_name) references department
+)
+.Ed
+.Sy Kenapa primary key otomatis not null?
+Karena primary key itu identitas. Kalau boleh null, kamu nggak
+bisa identifikasi barisnya.
+.Ss Bagian 2.4: Contoh Tabel Lain
+.Bd -literal -offset indent
+create table student (
+    ID         varchar(5),
+    name       varchar(20) not null,
+    dept_name  varchar(20),
+    tot_cred   numeric(3,0),
+    primary key (ID),
+    foreign key (dept_name) references department
+)
+
+create table takes (
+    ID         varchar(5),
+    course_id  varchar(8),
+    sec_id     varchar(8),
+    semester   varchar(6),
+    year       numeric(4,0),
+    grade      varchar(2),
+    primary key (ID, course_id, sec_id, semester, year),
+    foreign key (ID) references student,
+    foreign key (course_id, sec_id, semester, year) references section
+)
+
+create table course (
+    course_id  varchar(8),
+    title      varchar(50),
+    dept_name  varchar(20),
+    credits    numeric(2,0),
+    primary key (course_id),
+    foreign key (dept_name) references department
+)
+.Ed
+.Sy Kenapa takes punya composite primary key?
+Karena satu student bisa ambil banyak course, dan satu course
+bisa diambil banyak student. Yang unik itu kombinasi
+(ID, course_id, sec_id, semester, year).
+.Pp
+.Sy Catatan dari slide:
+sec_id bisa di-drop dari primary key, biar satu student nggak
+bisa daftar dua section course yang sama di semester yang sama.
+Ini contoh business rule yang diterjemahin jadi constraint.
+.Ss Bagian 2.5: Update Struktur Tabel
+Setelah tabel dibuat, kadang perlu diubah. Perintahnya:
+.Bl -tag -width "alter table" -offset indent
+.It Sy insert into
+Tambah data.
+.Bd -literal -offset indent
+insert into instructor values
+    ('10211', 'Smith', 'Biology', 66000)
+.Ed
+.It Sy delete from
+Hapus data (bukan tabelnya).
+.Bd -literal -offset indent
+delete from student
+.Ed
+Ini hapus semua baris, tapi tabelnya masih ada.
+.It Sy drop table
+Hapus tabel sekaligus strukturnya.
+.Bd -literal -offset indent
+drop table r
+.Ed
+Hati-hati: setelah ini, tabel beneran hilang.
+.It Sy alter table
+Ubah struktur tabel.
+.Bd -literal -offset indent
+alter table r add A D
+alter table r drop A
+.Ed
+.Sy add
+nambah kolom. Semua baris yang ada bakal diisi null di kolom baru.
+.Sy drop
+hapus kolom. Nggak semua database support ini.
+.El
+.Ss Bagian 3: Query Dasar
+Struktur query SQL:
+.Bd -literal -offset indent
+select A1, A2, ..., An
+from r1, r2, ..., rm
+where P
+.Ed
+.Keterangan:
+.Bl -bullet -offset indent
+.It
+.Sy Ai
+= atribut yang mau diambil
+.It
+.Sy ri
+= tabel sumber
+.It
+.Sy P
+= kondisi filter (predicate)
+.El
+Hasil query = tabel (relation). Selalu. Bahkan kalau cuma 1 kolom,
+tetep disebut relation.
+.Ss Bagian 3.1: SELECT Clause
+.Sy Fungsi:
+list kolom yang mau ditampilin. Ini equivalent ke projection
+di relational algebra.
+.Pp
+Contoh:
+.Bd -literal -offset indent
+select name from instructor
+.Ed
+Ambil nama semua dosen.
+.Pp
+.Sy Catatan penting:
+SQL case-insensitive. Jadi
+.Sy Name ,
+.Sy NAME ,
+.Sy name
+itu sama. Beberapa orang pakai uppercase buat keyword (SELECT,
+FROM), lowercase buat nama kolom. Itu convention, bukan aturan.
+.Ss Bagian 3.2: DISTINCT vs ALL
+Secara default, SQL
+.Sy nggak
+hapus duplikat. Kalau kamu ambil dept_name dari tabel
+instructor, dan ada 10 dosen di Comp. Sci., kamu bakal dapat
+"Comp. Sci." 10 kali.
+.Pp
+Buat hapus duplikat:
+.Bd -literal -offset indent
+select distinct dept_name from instructor
+.Ed
+Buat eksplisit minta duplikat (default):
+.Bd -literal -offset indent
+select all dept_name from instructor
+.Ed
+.Sy Kenapa defaultnya ALL?
+Karena hapus duplikat butuh sorting atau hashing, yang cost-nya
+mahal. SQL kasih kamu pilihan: mau cepet (ALL) atau mau bersih
+(DISTINCT).
+.Ss Bagian 3.3: Asterisk
+.Bd -literal -offset indent
+select * from instructor
+.Ed
+Ambil semua kolom. Sering dipakai buat eksplorasi, tapi jarang
+dipakai di production code (karena kalau struktur tabel berubah,
+hasil query berubah juga).
+.Ss Bagian 3.4: Literal dan Ekspresi
+Kamu bisa select literal tanpa from:
+.Bd -literal -offset indent
+select '437'
+.Ed
+Hasilnya: 1 kolom, 1 baris, nilai "437". Bisa dikasih nama:
+.Bd -literal -offset indent
+select '437' as FOO
+.Ed
+Kamu juga bisa select literal dengan from:
+.Bd -literal -offset indent
+select 'A' from instructor
+.Ed
+Hasilnya: 1 kolom, N baris (N = jumlah dosen), isinya semua "A".
+.Ss Bagian 3.5: Arithmetic di SELECT
+.Bd -literal -offset indent
+select ID, name, salary/12 from instructor
+.Ed
+Hasilnya sama kayak tabel instructor, tapi salary dibagi 12.
+Bisa di-rename:
+.Bd -literal -offset indent
+select ID, name, salary/12 as monthly_salary
+from instructor
+.Ed
+.Ss Bagian 3.6: WHERE Clause
+.Sy Fungsi:
+filter baris. Equivalent ke selection di relational algebra.
+.Pp
+Contoh:
+.Bd -literal -offset indent
+select name from instructor
+where dept_name = 'Comp. Sci.'
+.Ed
+Filter dosen yang di Comp. Sci.
+.Pp
+Bisa dikombinasi pakai logical connectives:
+.Bd -literal -offset indent
+select name from instructor
+where dept_name = 'Comp. Sci.' and salary > 80000
+.Ed
+.Sy and , or , not
+jalan seperti di bahasa programming biasa.
+.Pp
+Bisa juga pakai hasil arithmetic:
+.Bd -literal -offset indent
+select name from instructor
+where salary * 12 > 1000000
+.Ed
+.Ss Bagian 3.7: FROM Clause
+.Sy Fungsi:
+list tabel yang dilibatkan. Equivalent ke Cartesian product di
+relational algebra.
+.Pp
+.Bd -literal -offset indent
+select * from instructor, teaches
+.Ed
+Ini generate semua kombinasi dosen \(mu teaches. Kalau ada 10
+dosen dan 100 teaches, hasilnya 1000 baris. Semua atribut dari
+kedua tabel ikut.
+.Pp
+.Sy Untuk atribut yang namanya sama (misal ID),
+nama kolomnya di-prefix pakai nama tabel:
+.Sy instructor.ID ,
+.Sy teaches.ID .
+.Pp
+.Sy Cartesian product langsung jarang berguna.
+Yang berguna adalah kombinasi dengan
+.Sy where
+clause:
+.Bd -literal -offset indent
+select name, course_id
+from instructor, teaches
+where instructor.ID = teaches.ID
+.Ed
+Ini yang disebut
+.Sy join .
+Cartesian product + filter = join. Konsep yang penting banget.
+.Ss Bagian 3.8: Join Contoh
+.Bd -literal -offset indent
+-- Nama dosen + course_id yang dia ajar
+select name, course_id
+from instructor, teaches
+where instructor.ID = teaches.ID
+
+-- Nama dosen di Art + course yang dia ajar
+select name, course_id
+from instructor, teaches
+where instructor.ID = teaches.ID
+  and instructor.dept_name = 'Art'
+.Ed
+.Ss Bagian 3.9: Rename (AS)
+Buat rename tabel atau atribut:
+.Bd -literal -offset indent
+old-name as new-name
+.Ed
+.Sy Kenapa perlu rename?
+Karena kadang kamu perlu pakai tabel yang sama dua kali di satu
+query. Contoh: cari dosen yang gajinya lebih tinggi dari dosen
+lain di Comp. Sci.
+.Bd -literal -offset indent
+select distinct T.name
+from instructor as T, instructor as S
+where T.salary > S.salary
+  and S.dept_name = 'Comp. Sci.'
+.Ed
+Tanpa rename, kamu nggak bisa bedain T dan S. Keduanya
+"instructor".
+.Pp
+.Sy Keyword as itu optional.
+Bisa ditulis:
+.Bd -literal -offset indent
+from instructor T, instructor S
+.Ed
+Sama aja.
+.Ss Bagian 3.10: Self Join
+Kalau tabelnya punya relasi ke dirinya sendiri, contoh
+.Sy emp-super
+(bawahan \(-> atasan):
+.Bd -literal -offset indent
+person    supervisor
+Bob       Alice
+Mary      Susan
+Alice     David
+David     Mary
+.Ed
+Cari supervisor Bob:
+.Bd -literal -offset indent
+select supervisor from emp_super where person = 'Bob'
+.Ed
+Cari supervisor-nya supervisor Bob:
+.Bd -literal -offset indent
+select S.supervisor
+from emp_super as E, emp_super as S
+where E.person = 'Bob' and E.supervisor = S.person
+.Ed
+Cari
+.Sy semua
+supervisor (langsung dan nggak langsung) Bob:
+Ini butuh recursion. SQL murni nggak bisa. Harus pakai
+.Sy recursive CTE
+(common table expression) yang ada di SQL:1999 ke atas.
+.Ss Bagian 4: Operasi Tambahan
+.Ss Bagian 4.1: Pattern Matching \(em LIKE
+Buat compare string pakai pola. Dua wildcard:
+.Bl -bullet -offset indent
+.It
+.Sy %
+\(em match any substring (bisa kosong)
+.It
+.Sy _
+\(em match exactly one character
+.El
+Contoh:
+.Bd -literal -offset indent
+-- Nama yang mengandung "dar"
+select name from instructor
+where name like '%dar%'
+
+-- Nama yang mulai dengan "Intro"
+where name like 'Intro%'
+
+-- Nama yang 3 huruf
+where name like '___'
+
+-- Nama minimal 3 huruf
+where name like '___%'
+.Ed
+.Sy Kalau mau match karakter % atau _ literal?
+Pakai escape character:
+.Bd -literal -offset indent
+where name like '100\%' escape '\'
+.Ed
+Ini match string "100%" secara literal, bukan "100" + apapun.
+.Ss Bagian 4.2: ORDER BY
+Sort hasil query:
+.Bd -literal -offset indent
+select distinct name from instructor
+order by name
+.Ed
+Default ascending. Bisa explicit:
+.Bd -literal -offset indent
+order by name asc
+order by name desc
+.Ed
+Bisa sort multiple kolom:
+.Bd -literal -offset indent
+order by dept_name, name
+.Ed
+Ini sort dulu by dept_name. Kalau dept_name sama, baru by name.
+.Ss Bagian 4.3: BETWEEN
+Buat range check:
+.Bd -literal -offset indent
+select name from instructor
+where salary between 90000 and 100000
+.Ed
+Equivalent dengan:
+.Bd -literal -offset indent
+where salary >= 90000 and salary <= 100000
+.Ed
+.Ss Bagian 4.4: Tuple Comparison
+Compare multiple atribut sekaligus:
+.Bd -literal -offset indent
+select name, course_id
+from instructor, teaches
+where (instructor.ID, dept_name) = (teaches.ID, 'Biology')
+.Ed
+Ini bandingin pasangan (ID, dept_name) sama (ID, 'Biology').
+Lebih ringkas dari nulis:
+.Bd -literal -offset indent
+where instructor.ID = teaches.ID
+  and dept_name = 'Biology'
+.Ed
+.Ss Bagian 5: Set Operations
+SQL punya tiga operasi set, sama kayak himpunan di matematika:
+.Bl -tag -width "intersect" -offset indent
+.It Sy union
+Gabungan. Course yang jalan di Fall 2009 ATAU Spring 2010.
+.Bd -literal -offset indent
+(select course_id from section
+ where sem = 'Fall' and year = 2009)
+union
+(select course_id from section
+ where sem = 'Spring' and year = 2010)
+.Ed
+.It Sy intersect
+Irisan. Course yang jalan di Fall 2009 DAN Spring 2010.
+.Bd -literal -offset indent
+(select course_id from section
+ where sem = 'Fall' and year = 2009)
+intersect
+(select course_id from section
+ where sem = 'Spring' and year = 2010)
+.Ed
+.It Sy except
+Selisih. Course yang jalan di Fall 2009 TAPI NGGAK di Spring 2010.
+.Bd -literal -offset indent
+(select course_id from section
+ where sem = 'Fall' and year = 2009)
+except
+(select course_id from section
+ where sem = 'Spring' and year = 2010)
+.Ed
+.El
+.Sy Semua operasi di atas otomatis hapus duplikat.
+Buat retain duplikat, pakai versi multiset:
+.Bl -bullet -offset indent
+.It
+.Sy union all
+.It
+.Sy intersect all
+.It
+.Sy except all
+.El
+.Sy Aturan multiset:
+Kalau tuple muncul m kali di r dan n kali di s:
+.Bd -literal -offset indent
+r union all s       -> m + n kali
+r intersect all s   -> min(m, n) kali
+r except all s      -> max(0, m - n) kali
+.Ed
+.Ss Bagian 6: Null Values
+Null itu
+.Sy bukan
+0, bukan string kosong, bukan false.
+.Sy Null = nilai yang nggak diketahui atau nggak ada.
+.Pp
+Setiap operasi aritmatika yang melibatkan null, hasilnya null:
+.Bd -literal -offset indent
+5 + null = null
+null * 10 = null
+.Ed
+Buat cek null, pakai
+.Sy is null ,
+bukan
+.Sy = null :
+.Bd -literal -offset indent
+select name from instructor
+where salary is null
+.Ed
+.Ss Bagian 6.1: Three-Valued Logic
+SQL pakai 3 nilai logika: true, false, unknown.
+.Pp
+Setiap perbandingan dengan null hasilnya unknown:
+.Bd -literal -offset indent
+5 < null       -> unknown
+null <> null   -> unknown
+null = null    -> unknown
+.Ed
+.Sy Kenapa null = null itu unknown?
+Karena null itu "nilai yang nggak diketahui". Dua nilai yang
+nggak diketahui belum tentu sama. Bisa jadi sama, bisa jadi
+beda. Jadi jawabannya unknown.
+.Pp
+Tabel kebenaran:
+.Bd -literal -offset indent
+OR:
+  unknown or true    = true
+  unknown or false   = unknown
+  unknown or unknown = unknown
+
+AND:
+  true and unknown   = unknown
+  false and unknown  = false
+  unknown and unknown = unknown
+
+NOT:
+  not unknown = unknown
+.Ed
+.Sy Hasil WHERE clause:
+Kalau predicate-nya unknown, dianggap
+.Sy false .
+Jadi baris yang predicate-nya unknown nggak akan muncul di hasil.
+.Ss Bagian 7: Aggregate Functions
+Fungsi yang operate di sekumpulan nilai (bukan per baris) dan
+return satu nilai.
+.Bl -tag -width "count" -offset indent
+.It Sy avg
+Rata-rata.
+.It Sy min
+Nilai minimum.
+.It Sy max
+Nilai maksimum.
+.It Sy sum
+Total.
+.It Sy count
+Jumlah nilai.
+.El
+Contoh:
+.Bd -literal -offset indent
+-- Rata-rata gaji dosen Comp. Sci.
+select avg(salary) from instructor
+where dept_name = 'Comp. Sci.'
+
+-- Jumlah dosen yang ngajar Spring 2010
+select count(distinct ID) from teaches
+where semester = 'Spring' and year = 2010
+
+-- Jumlah baris di course
+select count(*) from course
+.Ed
+.Ss Bagian 7.1: GROUP BY
+Buat grouping sebelum aggregate:
+.Bd -literal -offset indent
+select dept_name, avg(salary) as avg_salary
+from instructor
+group by dept_name
+.Ed
+Hasilnya: rata-rata gaji per departemen.
+.Sy Kenapa perlu GROUP BY?
+Karena tanpa grouping, avg(salary) cuma ngasih satu angka
+(rata-rata semua dosen). Dengan grouping, kamu dapat rata-rata
+per kelompok.
+.Pp
+.Sy Aturan penting:
+Semua atribut di SELECT yang bukan aggregate, HARUS muncul di
+GROUP BY. Kalau nggak, query-nya error.
+.Bd -literal -offset indent
+-- SALAH
+select dept_name, ID, avg(salary)
+from instructor
+group by dept_name
+
+-- BENER
+select dept_name, ID, avg(salary)
+from instructor
+group by dept_name, ID
+.Ed
+.Sy Kenapa?
+Karena kalau kamu group by dept_name doang, tiap departemen
+punya banyak ID. Mana yang mau ditampilin?
+.Ss Bagian 7.2: HAVING
+Filter hasil grouping.
+.Bd -literal -offset indent
+select dept_name, avg(salary)
+from instructor
+group by dept_name
+having avg(salary) > 42000
+.Ed
+.Sy Bedanya HAVING vs WHERE:
+.Bl -bullet -offset indent
+.It
+.Sy WHERE
+filter baris SEBELUM grouping.
+.It
+.Sy HAVING
+filter grup SETELAH grouping.
+.El
+Jadi kalau kamu mau filter "hanya dosen dengan gaji > 50000,
+terus hitung rata-rata per departemen", pakai
+.Sy WHERE .
+Kalau kamu mau filter "hanya departemen dengan rata-rata > 42000",
+pakai
+.Sy HAVING .
+.Ss Bagian 7.3: Null di Aggregate
+Semua aggregate kecuali
+.Sy count(*)
+ignore null.
+.Bd -literal -offset indent
+select sum(salary) from instructor
+.Ed
+Kalau ada dosen yang salary-nya null, dia nggak dihitung.
+.Pp
+Kalau semua nilai null:
+.Bl -bullet -offset indent
+.It
+.Sy count
+return 0
+.It
+Aggregate lain return null
+.El
+.Ss Bagian 8: Nested Subqueries
+Subquery = query di dalam query. Ada 3 posisi:
+.Bl -bullet -offset indent
+.It
+Di
+.Sy WHERE
+clause (paling umum)
+.It
+Di
+.Sy FROM
+clause
+.It
+Di
+.Sy SELECT
+clause
+.El
+.Ss Bagian 8.1: Subquery di WHERE
+.Sy Set membership:
+.Bd -literal -offset indent
+-- Course yang ditawarin di Fall 2009 DAN Spring 2010
+select distinct course_id
+from section
+where semester = 'Fall' and year = 2009
+  and course_id in (
+      select course_id from section
+      where semester = 'Spring' and year = 2010
+  )
+.Ed
+Bisa juga
+.Sy not in
+buat kebalikannya.
+.Sy Set comparison \(em some:
+.Bd -literal -offset indent
+-- Dosen dengan gaji > gaji MINIMAL SATU dosen Biology
+select name from instructor
+where salary > some (
+    select salary from instructor
+    where dept_name = 'Biology'
+)
+.Ed
+.Sy some
+artinya "minimal satu". Equivalent dengan
+.Sy exists
+di matematika.
+.Sy Set comparison \(em all:
+.Bd -literal -offset indent
+-- Dosen dengan gaji > gaji SEMUA dosen Biology
+select name from instructor
+where salary > all (
+    select salary from instructor
+    where dept_name = 'Biology'
+)
+.Ed
+.Sy all
+artinya "semua".
+.Pp
+.Sy Aturan penting:
+.Bl -bullet -offset indent
+.It
+.Sy = some
+equivalent dengan
+.Sy in
+.It
+.Sy <> some
+NGGAK
+equivalent dengan
+.Sy not in
+.It
+.Sy <> all
+equivalent dengan
+.Sy not in
+.It
+.Sy = all
+NGGAK
+equivalent dengan
+.Sy in
+.El
+.Ss Bagian 8.2: EXISTS
+.Sy exists
+return true kalau subquery-nya nggak kosong.
+.Bd -literal -offset indent
+select course_id from section as S
+where semester = 'Fall' and year = 2009
+  and exists (
+      select * from section as T
+      where semester = 'Spring' and year = 2010
+        and S.course_id = T.course_id
+  )
+.Ed
+.Sy Kenapa perlu EXISTS?
+Karena kadang kamu cuma mau cek "ada atau nggak", bukan ambil
+nilainya. EXISTS lebih efisien dari IN buat kasus tertentu.
+.Pp
+.Sy Correlated subquery:
+Subquery yang refer ke tabel di outer query. Contoh di atas:
+.Sy S.course_id
+di subquery nunjuk ke
+.Sy S
+yang di luar. Ini yang disebut correlation.
+.Ss Bagian 8.3: NOT EXISTS
+Buat cari yang "nggak ada":
+.Bd -literal -offset indent
+-- Student yang udah ambil SEMUA course Biology
+select distinct S.ID, S.name
+from student as S
+where not exists (
+    (select course_id from course where dept_name = 'Biology')
+    except
+    (select T.course_id from takes as T where S.ID = T.ID)
+)
+.Ed
+.Sy Cara baca:
+"Ambil course Biology. Kurangi dengan course yang udah diambil
+student X. Kalau hasilnya kosong, berarti student X udah ambil
+semua."
+.Pp
+.Sy Rumus:
+.Sy X - Y = empty \(-> X subset Y .
+.Sy Kenapa nggak pakai = all?
+Karena SQL nggak bisa nge-express "untuk semua X, X ada di Y"
+pakai
+.Sy = all
+langsung. Harus pakai double negation:
+.Sy not exists (A except B) .
+.Ss Bagian 8.4: UNIQUE
+Cek apakah subquery punya duplikat.
+.Bd -literal -offset indent
+select T.course_id from course as T
+where unique (
+    select R.course_id from section as R
+    where T.course_id = R.course_id and R.year = 2009
+)
+.Ed
+Return true kalau subquery-nya nggak ada duplikat.
+.Ss Bagian 8.5: Subquery di FROM
+.Bd -literal -offset indent
+select dept_name, avg_salary
+from (
+    select dept_name, avg(salary) as avg_salary
+    from instructor
+    group by dept_name
+)
+where avg_salary > 42000
+.Ed
+.Sy Kenapa pakai subquery di FROM?
+Karena kadang kamu butuh filter hasil aggregate. Bisa pakai
+HAVING, tapi kadang subquery di FROM lebih jelas dan fleksibel.
+.Ss Bagian 8.6: WITH Clause
+Buat define temporary relation.
+.Bd -literal -offset indent
+with max_budget(value) as (
+    select max(budget) from department
+)
+select department.name
+from department, max_budget
+where department.budget = max_budget.value
+.Ed
+.Sy Kenapa pakai WITH?
+Biar query-nya lebih readable. Bisa juga dipakai berkali-kali
+dalam satu query.
+.Pp
+Contoh kompleks:
+.Bd -literal -offset indent
+with dept_total(dept_name, value) as (
+    select dept_name, sum(salary)
+    from instructor
+    group by dept_name
+),
+dept_total_avg(value) as (
+    select avg(value) from dept_total
+)
+select dept_name
+from dept_total, dept_total_avg
+where dept_total.value > dept_total_avg.value
+.Ed
+.Ss Bagian 8.7: Subquery di SELECT
+Bisa juga taruh subquery di select clause:
+.Bd -literal -offset indent
+select dept_name,
+       (select count(*) from instructor
+        where instructor.dept_name = department.dept_name)
+from department
+.Ed
+Hasilnya: tiap departemen sama jumlah dosennya. Tapi ini
+kurang efisien, lebih baik pakai GROUP BY.
+.Ss Bagian 9: Modifikasi Database
+.Ss Bagian 9.1: DELETE
+.Bd -literal -offset indent
+-- Hapus semua
+delete from instructor
+
+-- Hapus yang Finance
+delete from instructor where dept_name = 'Finance'
+
+-- Hapus yang di gedung Watson
+delete from instructor
+where dept_name in (
+    select dept_name from department
+    where building = 'Watson'
+)
+.Ed
+.Sy Problem dengan subquery di DELETE:
+.Bd -literal -offset indent
+delete from instructor
+where salary < (select avg(salary) from instructor)
+.Ed
+Kalau kamu hapus satu-satu, rata-ratanya berubah. Ini masalah.
+.Pp
+.Sy Solusi SQL:
+SQL nggak recompute rata-rata tiap kali hapus. Dia:
+.Bl -enum -offset indent
+.It
+Hitung avg(salary) dulu.
+.It
+Cari semua tuple yang mau dihapus.
+.It
+Hapus semuanya sekaligus.
+.El
+Jadi konsisten.
+.Ss Bagian 9.2: INSERT
+.Bd -literal -offset indent
+-- Insert satu baris
+insert into course values
+    ('CS-437', 'Database Systems', 'Comp. Sci.', 4)
+
+-- Bisa juga specify kolomnya
+insert into course (course_id, title, dept_name, credits)
+values ('CS-437', 'Database Systems', 'Comp. Sci.', 4)
+
+-- Insert dengan nilai null
+insert into student values ('3003', 'Green', 'Finance', null)
+.Ed
+.Sy INSERT dari SELECT:
+.Bd -literal -offset indent
+insert into student
+select ID, name, dept_name, 0
+from instructor
+.Ed
+Ini copy semua instructor ke student, dengan tot_cred = 0.
+.Pp
+.Sy Aturan penting:
+SELECT di-evaluate
+.Sy sepenuhnya
+sebelum hasilnya di-insert. Kalau nggak, query kayak:
+.Bd -literal -offset indent
+insert into table1 select * from table1
+.Ed
+bakal infinite loop (insert baris terus-terusan).
+.Ss Bagian 9.3: UPDATE
+.Bd -literal -offset indent
+-- Naikin gaji 3% buat yang > 100000
+update instructor
+set salary = salary * 1.03
+where salary > 100000
+
+-- Naikin 5% buat yang <= 100000
+update instructor
+set salary = salary * 1.05
+where salary <= 100000
+.Ed
+.Sy Order matters:
+Kalau kamu tukar urutannya, hasilnya beda. Ini bahaya.
+.Pp
+.Sy Lebih baik pakai CASE:
+.Bd -literal -offset indent
+update instructor
+set salary = case
+    when salary <= 100000 then salary * 1.05
+    else salary * 1.03
+end
+.Ed
+Ini satu statement, nggak ada ordering issue.
+.Pp
+.Sy Update dengan subquery:
+.Bd -literal -offset indent
+update student S
+set tot_cred = (
+    select sum(credits)
+    from takes, course
+    where takes.course_id = course.course_id
+      and S.ID = takes.ID
+      and takes.grade <> 'F'
+      and takes.grade is not null
+)
+.Ed
+Ini update tot_cred tiap student berdasarkan SKS yang lulus.
+.Pp
+.Sy Problem:
+Student yang nggak ambil course, sum(credits)-nya null. Bukan 0.
+Solusinya pakai CASE:
+.Bd -literal -offset indent
+case
+    when sum(credits) is not null then sum(credits)
+    else 0
+end
+.Ed
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep              Inti
+DDL                 Bahasa define struktur
+CREATE TABLE        Bikin tabel
+PRIMARY KEY         ID unik tiap baris
+FOREIGN KEY         Refer ke tabel lain
+SELECT FROM WHERE   Query dasar
+DISTINCT            Hapus duplikat
+AS                  Rename
+JOIN                Cartesian product + filter
+LIKE                Pattern matching
+ORDER BY            Sort hasil
+BETWEEN             Range check
+UNION/INTERSECT     Set operations
+NULL                Nilai nggak diketahui
+3-valued logic      True / False / Unknown
+AVG/MIN/MAX/SUM     Aggregate functions
+COUNT
+GROUP BY            Kelompokkan sebelum aggregate
+HAVING              Filter setelah grouping
+Subquery            Query di dalam query
+IN / SOME / ALL     Set comparison
+EXISTS              Cek subquery nggak kosong
+WITH                Temporary relation
+INSERT              Tambah data
+UPDATE              Ubah data
+DELETE              Hapus data
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy SQL itu bukan bahasa programming, tapi bahasa query.
+Dia deklaratif \(em kamu bilang APA yang kamu mau, bukan
+GIMANA caranya. Database yang ngurus caranya. Itu kenapa
+SQL bisa dioptimize otomatis, dan kenapa SQL nggak Turing-
+complete.
+.Pp
+Yang belum dijawab di sini: gimana caranya biar query cepet
+di tabel dengan miliaran baris? Kenapa JOIN kadang lambat?
+Kapan pakai index? Kapan pakai subquery, kapan pakai JOIN?
+Itu topik lanjutan: indexing, query optimization, dan
+execution plan. Kalau penasaran, cari sendiri.
+.Sh SEE ALSO
+.Xr database-intro 1 ,
+.Xr database-konsep 1 ,
+.Xr postgres 1 ,
+.Xr sqlite3 1
+.Sh AUTHORS
+.An mroczect
