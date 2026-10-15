@@ -1,0 +1,1006 @@
+.Dd 2026-10-15 18:30:00
+.Dt SQL-ADVANCED 1
+.Os
+.Sh NAME
+.Nm sql-advanced
+.Nd SQL tingkat lanjut, dari JDBC sampai OLAP
+.Sh DESCRIPTION
+Ini catatan Chapter 5 dari buku Database System Concepts. Isinya:
+akses SQL dari bahasa programming, functions dan procedures,
+triggers, recursive queries, advanced aggregation, dan OLAP.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+topik-topik ini yang bikin SQL bisa dipakai di aplikasi
+beneran, bukan cuma di kelas.
+.Ss Bagian 1: Akses SQL dari Bahasa Programming
+.Sy Kenapa perlu?
+SQL itu bahasa query, bukan bahasa programming. Kamu nggak bisa
+bikin GUI pakai SQL, nggak bisa baca file, nggak bisa kirim
+HTTP request. Jadi SQL selalu dipakai dari dalam bahasa lain:
+Python, Java, C, Go, dll.
+.Ss Bagian 1.1: API vs Embedded SQL
+Ada dua cara akses SQL dari bahasa programming:
+.Bl -tag -width "Embedded SQL" -offset indent
+.It Sy API (Application Programming Interface)
+Program manggil fungsi-fungsi API buat connect ke database,
+kirim query, ambil hasil.
+Contoh: ODBC (C, C++, C#, VB), JDBC (Java), ADO.NET.
+.It Sy Embedded SQL
+SQL ditulis langsung di dalam kode bahasa host, dengan marker
+khusus. Preprocessor yang nerjemahin jadi API call.
+Contoh: SQLJ (Java), Pro*C (C).
+.El
+.Sy API lebih umum dipakai
+karena nggak butuh preprocessor dan lebih fleksibel.
+.Ss Bagian 1.2: JDBC
+.Sy JDBC itu apa?
+Java Database Connectivity. API standar buat Java connect ke
+database.
+.Pp
+.Sy Model komunikasi:
+.Bl -enum -offset indent
+.It
+Buka connection ke database.
+.It
+Bikin
+.Sy Statement
+object.
+.It
+Eksekusi query pakai Statement.
+.It
+Fetch hasilnya.
+.It
+Handle error pakai exception.
+.El
+.Sy Contoh kode (Java 7+, JDBC 4+):
+.Bd -literal -offset indent
+public static void JDBCExample(String dbid,
+                               String userid,
+                               String passwd)
+{
+    try (Connection conn = DriverManager.getConnection(
+             "jdbc:oracle:thin:@db.yale.edu:2000:univdb",
+             userid, passwd);
+         Statement stmt = conn.createStatement())
+    {
+        // ... do actual work ...
+    }
+    catch (SQLException sqle) {
+        System.out.println("SQLException : " + sqle);
+    }
+}
+.Ed
+.Sy Kenapa pakai try-with-resources?
+Karena connection dan statement itu resource yang harus
+ditutup. Kalau nggak, bocor. Try-with-resources otomatis
+nutup di akhir blok, walau ada exception.
+.Ss Bagian 1.3: JDBC untuk Java Versi Lama
+.Bd -literal -offset indent
+public static void JDBCExample(String dbid,
+                               String userid,
+                               String passwd)
+{
+    try {
+        Class.forName("oracle.jdbc.driver.OracleDriver");
+        Connection conn = DriverManager.getConnection(
+            "jdbc:oracle:thin:@db.yale.edu:2000:univdb",
+            userid, passwd);
+        Statement stmt = conn.createStatement();
+        // ... do actual work ...
+        stmt.close();
+        conn.close();
+    }
+    catch (SQLException sqle) {
+        System.out.println("SQLException : " + sqle);
+    }
+}
+.Ed
+.Sy Class.forName
+nggak perlu lagi di JDBC 4+. Tapi kalau ketemu kode lama,
+ini yang kamu lihat.
+.Ss Bagian 1.4: Update dan Query di JDBC
+.Sy Update:
+.Bd -literal -offset indent
+try {
+    stmt.executeUpdate(
+        "insert into instructor " +
+        "values('77987', 'Kim', 'Physics', 98000)");
+} catch (SQLException sqle) {
+    System.out.println("Could not insert tuple. " + sqle);
+}
+.Ed
+.Sy Query:
+.Bd -literal -offset indent
+ResultSet rset = stmt.executeQuery(
+    "select dept_name, avg(salary) " +
+    "from instructor group by dept_name");
+
+while (rset.next()) {
+    System.out.println(rset.getString("dept_name") + " " +
+                       rset.getFloat(2));
+}
+.Ed
+.Sy Ambil hasil by index atau by name:
+.Bd -literal -offset indent
+rs.getString("dept_name")
+rs.getString(1)   // equivalent
+.Ed
+.Sy Handle NULL:
+.Bd -literal -offset indent
+int a = rs.getInt("a");
+if (rs.wasNull()) {
+    System.out.println("Got null value");
+}
+.Ed
+.Sy Kenapa perlu wasNull?
+Karena getInt return 0 kalau nilainya NULL. Kamu nggak bisa
+bedain "0 beneran" sama "NULL". wasNull() yang ngasih tau.
+.Ss Bagian 1.5: PreparedStatement
+.Bd -literal -offset indent
+PreparedStatement pStmt = conn.prepareStatement(
+    "insert into instructor values(?,?,?,?)");
+
+pStmt.setString(1, "88877");
+pStmt.setString(2, "Perry");
+pStmt.setString(3, "Finance");
+pStmt.setInt(4, 125000);
+pStmt.executeUpdate();
+
+pStmt.setString(1, "88878");
+pStmt.executeUpdate();
+.Ed
+.Sy Kenapa pakai prepared statement?
+Dua alasan:
+.Bl -enum -offset indent
+.It
+.Sy Performance
+: Query di-parse sekali, bisa dijalanin berkali-kali.
+.It
+.Sy Security
+: Mencegah SQL injection.
+.El
+.Ss Bagian 1.6: SQL Injection
+.Sy Contoh bug:
+.Bd -literal -offset indent
+"select * from instructor where name = " + name + ""
+.Ed
+Kalau user masukin nama:
+.Bd -literal -offset indent
+X' or 'Y' = 'Y
+.Ed
+Query jadi:
+.Bd -literal -offset indent
+select * from instructor where name = 'X' or 'Y' = 'Y'
+.Ed
+.Sy Hasilnya:
+Semua baris di-return, karena
+.Sy 'Y' = 'Y'
+selalu true.
+.Pp
+.Sy Lebih parah:
+User bisa masukin:
+.Bd -literal -offset indent
+X'; update instructor set salary = salary + 10000;
+.Ed
+Ini bakal nge-update semua gaji dosen.
+.Pp
+.Sy Solusi:
+Selalu pakai prepared statement. Jangan pernah concat string
+dari user input ke query.
+.Ss Bagian 1.7: ResultSet Metadata
+.Bd -literal -offset indent
+ResultSetMetaData rsmd = rs.getMetaData();
+for (int i = 1; i <= rsmd.getColumnCount(); i++) {
+    System.out.println(rsmd.getColumnName(i));
+    System.out.println(rsmd.getColumnTypeName(i));
+}
+.Ed
+.Sy Kegunaan:
+Bikin aplikasi generic yang bisa handle query apapun.
+Contoh: tool query browser, ORM framework.
+.Ss Bagian 1.8: Database Metadata
+.Bd -literal -offset indent
+DatabaseMetaData dbmd = conn.getMetaData();
+
+// getColumns: catalog, schema-pattern, table-pattern,
+//             column-pattern
+ResultSet rs = dbmd.getColumns(null, "univdb",
+                                "department", "%");
+while (rs.next()) {
+    System.out.println(rs.getString("COLUMN_NAME"),
+                       rs.getString("TYPE_NAME"));
+}
+.Ed
+.Sy Kegunaan:
+Bikin tool yang bisa eksplor struktur database secara dinamis.
+Contoh: pgAdmin, DBeaver.
+.Pp
+.Sy Metadata primary key:
+.Bd -literal -offset indent
+DatabaseMetaData dmd = connection.getMetaData();
+ResultSet rs = dmd.getPrimaryKeys("", "", tableName);
+while (rs.next()) {
+    System.out.println(rs.getString("KEY_SEQ"),
+                       rs.getString("COLUMN_NAME"));
+}
+.Ed
+.Sy KEY_SEQ
+penting kalau primary key-nya composite. Dia nunjukin urutan
+kolom dalam primary key.
+.Ss Bagian 1.9: Transaction Control di JDBC
+.Sy Default:
+Setiap SQL statement itu transaction sendiri, auto-commit.
+.Sy Masalahnya:
+Kalau kamu punya transaction multi-statement (misal transfer
+uang), ini bahaya. Kalau statement kedua gagal, statement
+pertama udah ke-commit.
+.Sy Solusinya:
+.Bd -literal -offset indent
+conn.setAutoCommit(false);
+
+// ... beberapa statement ...
+
+conn.commit();    // kalau sukses
+// atau
+conn.rollback();  // kalau gagal
+
+conn.setAutoCommit(true);  // balikin ke default
+.Ed
+.Ss Bagian 1.10: JDBC Features Lain
+.Sy CallableStatement:
+Buat manggil function atau procedure.
+.Bd -literal -offset indent
+CallableStatement cStmt1 = conn.prepareCall(
+    "{? = call some_function(?)}");
+CallableStatement cStmt2 = conn.prepareCall(
+    "{call some_procedure(?,?)}");
+.Ed
+.Sy Large object:
+.Bd -literal -offset indent
+getBlob()  // return Blob object
+getClob()  // return Clob object
+
+// Ambil data
+blob.getBytes()
+
+// Update
+blob.setBlob(int parameterIndex,
+             InputStream inputStream)
+.Ed
+.Ss Bagian 1.11: Embedded SQL
+.Sy Konsep:
+SQL ditulis di dalam bahasa host, dengan marker
+.Sy EXEC SQL .
+Preprocessor nerjemahin jadi API call.
+.Pp
+.Sy Syntax dasar:
+.Bd -literal -offset indent
+EXEC SQL <embedded SQL statement>;
+.Ed
+.Sy Connect:
+.Bd -literal -offset indent
+EXEC SQL connect to server user user-name using password;
+.Ed
+.Sy Declare host language variables:
+.Bd -literal -offset indent
+EXEC SQL BEGIN DECLARE SECTION;
+int credit_amount;
+EXEC SQL END DECLARE SECTION;
+.Ed
+.Sy Pakai variable di query (pakai colon):
+.Bd -literal -offset indent
+EXEC SQL
+    declare c cursor for
+    select ID, name from student
+    where tot_cred > :credit_amount
+END_EXEC
+.Ed
+.Sy Cursor operations:
+.Bd -literal -offset indent
+EXEC SQL open c;
+
+EXEC SQL fetch c into :si, :sn END_EXEC
+
+EXEC SQL close c;
+.Ed
+.Sy SQLSTATE
+= '02000' artinya nggak ada data lagi.
+.Ss Bagian 1.12: SQLJ
+.Sy SQLJ
+= embedded SQL di Java.
+.Bd -literal -offset indent
+#sql iterator deptInfoIter (String dept_name,
+                            int avgSal);
+deptInfoIter iter = null;
+
+#sql iter = { select dept_name, avg(salary)
+              from instructor
+              group by dept_name };
+
+while (iter.next()) {
+    String deptName = iter.dept_name();
+    int avgSal = iter.avgSal();
+    System.out.println(deptName + " " + avgSal);
+}
+iter.close();
+.Ed
+.Sy Kenapa SQLJ?
+Karena JDBC itu "overly dynamic" \(em error-nya nggak ketangkep
+compiler. SQLJ di-preprocess, jadi error syntax SQL bisa
+ketangkep saat compile.
+.Ss Bagian 2: Functions dan Procedures
+.Sy Kenapa perlu?
+Karena kadang logika bisnis butuh lebih dari yang bisa
+di-express di SQL. Contoh: hitung gaji lembur, validasi
+kompleks, format data.
+.Ss Bagian 2.1: Function
+.Bd -literal -offset indent
+create function dept_count(dept_name varchar(20))
+returns integer
+begin
+    declare d_count integer;
+    select count(*) into d_count
+    from instructor
+    where instructor.dept_name = dept_name;
+    return d_count;
+end
+.Ed
+.Sy Cara pakai:
+.Bd -literal -offset indent
+select dept_name, budget
+from department
+where dept_count(dept_name) > 12
+.Ed
+.Sy Struktur:
+.Bl -bullet -offset indent
+.It
+.Sy begin ... end
+: compound statement.
+.It
+.Sy declare
+: deklarasi variable.
+.It
+.Sy return
+: nilai yang dikembalikan.
+.El
+.Sy SQL function itu parameterized view.
+View biasa: query tetap. Function: query-nya bisa dikasih
+parameter.
+.Ss Bagian 2.2: Table Function
+Function yang return relation.
+.Bd -literal -offset indent
+create function instructor_of(dept_name char(20))
+returns table (
+    ID         varchar(5),
+    name       varchar(20),
+    dept_name  varchar(20),
+    salary     numeric(8,2)
+)
+return table (
+    select ID, name, dept_name, salary
+    from instructor
+    where instructor.dept_name = instructor_of.dept_name
+)
+.Ed
+.Sy Cara pakai:
+.Bd -literal -offset indent
+select * from table(instructor_of('Music'))
+.Ed
+.Sy Kenapa berguna?
+Karena bisa dipakai di FROM clause, jadi bisa di-join sama
+tabel lain.
+.Ss Bagian 2.3: Procedure
+.Bd -literal -offset indent
+create procedure dept_count_proc(
+    in dept_name varchar(20),
+    out d_count integer
+)
+begin
+    select count(*) into d_count
+    from instructor
+    where instructor.dept_name = dept_count_proc.dept_name
+end
+.Ed
+.Sy Cara pakai:
+.Bd -literal -offset indent
+declare d_count integer;
+call dept_count_proc('Physics', d_count);
+.Ed
+.Sy Bedanya function vs procedure:
+.Bl -bullet -offset indent
+.It
+.Sy Function
+: return nilai, bisa dipakai di SELECT.
+.It
+.Sy Procedure
+: nggak return nilai, dipanggil pakai CALL.
+.El
+.Sy Name overloading:
+SQL:1999 allows multiple function/procedure dengan nama sama,
+asal jumlah atau tipe argumennya beda.
+.Ss Bagian 2.4: Language Constructs
+SQL punya construct kayak bahasa programming biasa:
+.Bl -tag -width "for loop" -offset indent
+.It Sy Compound statement
+.Bd -literal -offset indent
+begin ... end
+.Ed
+.It Sy While
+.Bd -literal -offset indent
+while boolean_expression do
+    sequence_of_statements;
+end while
+.Ed
+.It Sy Repeat
+.Bd -literal -offset indent
+repeat
+    sequence_of_statements;
+until boolean_expression
+end repeat
+.Ed
+.It Sy For loop
+Iterasi over hasil query.
+.Bd -literal -offset indent
+declare n integer default 0;
+for r as select budget from department do
+    set n = n + r.budget
+end for
+.Ed
+.It Sy Conditional
+.Bd -literal -offset indent
+if ... then ... else ... end if
+case ... when ... then ... end case
+.Ed
+.It Sy Exception handling
+.Bd -literal -offset indent
+declare out_of_classroom_seats condition
+declare exit handler for out_of_classroom_seats
+begin
+    ... signal out_of_classroom_seats ...
+end
+.Ed
+.El
+.Ss Bagian 2.5: External Language Routines
+.Sy Konsep:
+Function/procedure ditulis di bahasa lain (C, C++, Java),
+tapi dipanggil dari SQL.
+.Bd -literal -offset indent
+create procedure dept_count_proc(
+    in dept_name varchar(20),
+    out count integer
+)
+language C
+external name '/usr/avi/bin/dept_count_proc'
+.Ed
+.Sy Keuntungan:
+.Bl -bullet -offset indent
+.It
+Lebih efisien buat operasi tertentu.
+.It
+Lebih expressive \(em bisa ngapain aja yang SQL nggak bisa.
+.It
+Bisa handle tipe data khusus (image, geometric object).
+.El
+.Sy Kerugian:
+.Bl -bullet -offset indent
+.It
+Code-nya di-load ke address space database. Bisa korup
+struktur database.
+.It
+Security risk. User bisa akses data yang seharusnya nggak
+boleh.
+.El
+.Sy Solusinya:
+.Bl -bullet -offset indent
+.It
+.Sy Sandbox
+: pakai bahasa aman kayak Java.
+.It
+.Sy Separate process
+: jalanin di proses terpisah, komunikasi via IPC.
+.El
+Keduanya ada overhead performance.
+.Ss Bagian 3: Triggers
+.Sy Trigger itu apa?
+Statement yang jalan
+.Sy otomatis
+sebagai side effect dari modifikasi database.
+.Pp
+.Sy Kenapa perlu?
+Buat enforce constraint yang kompleks, yang nggak bisa
+di-express pakai CHECK atau foreign key.
+.Pp
+.Sy Desainnya:
+.Bl -bullet -offset indent
+.It
+Specify
+.Sy kondisi
+kapan trigger jalan.
+.It
+Specify
+.Sy aksi
+yang dijalanin.
+.El
+.Ss Bagian 3.1: Trigger Events
+.Bl -bullet -offset indent
+.It
+.Sy insert
+.It
+.Sy delete
+.It
+.Sy update
+\(em bisa specific atribut, misal
+.Sy update of takes on grade
+.El
+.Sy Referensi ke nilai lama dan baru:
+.Bl -bullet -offset indent
+.It
+.Sy referencing old row
+: buat DELETE dan UPDATE.
+.It
+.Sy referencing new row
+: buat INSERT dan UPDATE.
+.El
+.Ss Bagian 3.2: Before Trigger
+Trigger yang jalan
+.Sy sebelum
+event.
+.Bd -literal -offset indent
+create trigger setnull_trigger
+before update of takes
+referencing new row as nrow
+for each row
+when (nrow.grade = ' ')
+begin atomic
+    set nrow.grade = null;
+end;
+.Ed
+.Sy Fungsinya:
+Konversi grade kosong jadi null.
+.Ss Bagian 3.3: After Trigger
+Trigger yang jalan
+.Sy setelah
+event.
+.Bd -literal -offset indent
+create trigger credits_earned
+after update of takes on (grade)
+referencing new row as nrow
+referencing old row as orow
+for each row
+when nrow.grade <> 'F'
+  and nrow.grade is not null
+  and (orow.grade = 'F' or orow.grade is null)
+begin atomic
+    update student
+    set tot_cred = tot_cred +
+        (select credits from course
+         where course.course_id = nrow.course_id)
+    where student.id = nrow.id;
+end;
+.Ed
+.Sy Fungsinya:
+Kalau grade berubah dari F ke bukan F (atau dari null ke
+bukan null), tambah tot_cred student.
+.Ss Bagian 3.4: For Each Row vs For Each Statement
+.Bl -tag -width "for each row" -offset indent
+.It Sy for each row
+Trigger jalan sekali per baris yang affected.
+.It Sy for each statement
+Trigger jalan sekali untuk semua baris yang affected.
+Pakai
+.Sy referencing old table
+atau
+.Sy referencing new table
+buat akses ke transition table.
+.El
+.Sy Kenapa for each statement?
+Lebih efisien kalau update-nya banyak baris.
+.Ss Bagian 3.5: Kapan Jangan Pakai Trigger
+.Sy Dulu, trigger dipakai buat:
+.Bl -bullet -offset indent
+.It
+Maintain summary data (total gaji per departemen).
+.It
+Replikasi database.
+.El
+.Sy Sekarang, ada cara yang lebih baik:
+.Bl -bullet -offset indent
+.It
+.Sy Materialized view
+buat summary data.
+.It
+.Sy Built-in replication
+buat replikasi.
+.It
+.Sy Encapsulation
+\(em taruh logic di method, bukan di trigger.
+.El
+.Sy Risiko pakai trigger:
+.Bl -bullet -offset indent
+.It
+Trigger jalan tanpa sengaja \(em misal pas restore dari backup,
+pas replikasi.
+.It
+Error di trigger bisa bikin transaction utama gagal.
+.It
+Cascading execution \(em trigger A bikin trigger B jalan,
+trigger B bikin trigger C jalan, dst.
+.El
+.Ss Bagian 4: Recursive Queries
+.Sy Kenapa perlu?
+Karena ada query yang nggak bisa di-express tanpa recursion.
+Contoh: cari semua prereq (langsung dan nggak langsung) dari
+suatu course.
+.Pp
+.Sy Kalau nggak ada recursion:
+Kamu cuma bisa fixed number of joins. Contoh: prereq 1 level,
+prereq 2 level. Tapi nggak bisa unlimited.
+.Ss Bagian 4.1: WITH RECURSIVE
+.Bd -literal -offset indent
+with recursive rec_prereq(course_id, prereq_id) as (
+    select course_id, prereq_id
+    from prereq
+    union
+    select rec_prereq.course_id, prereq.prereq_id
+    from rec_prereq, prereq
+    where rec_prereq.prereq_id = prereq.course_id
+)
+select * from rec_prereq;
+.Ed
+.Sy Cara baca:
+.Bl -enun -offset indent
+.It
+Ambil prereq langsung dari tabel prereq.
+.It
+Union dengan prereq yang didapat dari recursion.
+.It
+Loop sampai nggak ada tuple baru.
+.El
+.Sy Hasilnya:
+Transitive closure dari relasi prereq.
+.Ss Bagian 4.2: The Power of Recursion
+Recursive view bikin kamu bisa nulis query yang nggak bisa
+ditulis tanpa recursion atau iteration.
+.Pp
+.Sy Intuisi:
+Tanpa recursion, program non-iterative cuma bisa nge-join
+sejumlah tetap. Contoh: cuma bisa 3 level manager. Kalau
+datanya punya 4 level, query-nya gagal.
+.Ss Bagian 4.3: Fixed-Point Computation
+Recursive view di-compute secara iteratif:
+.Bl -enun -offset indent
+.It
+Iterasi 1: tambah tuple baru.
+.It
+Iterasi 2: tambah tuple baru lagi.
+.It
+Iterasi 3: ...
+.It
+Sampai nggak ada tuple baru. Ini yang disebut
+.Sy fixed point .
+.El
+.Sy Recursive view harus monotonic:
+Kalau kamu tambah tuple ke prereq, view rec_prereq harus
+contains semua tuple yang sebelumnya, plus mungkin lebih.
+.Ss Bagian 5: Advanced Aggregation
+.Ss Bagian 5.1: Ranking
+.Bd -literal -offset indent
+select ID, rank() over (order by GPA desc) as s_rank
+from student_grades
+order by s_rank
+.Ed
+.Sy Bedanya rank dan dense_rank:
+.Bl -bullet -offset indent
+.It
+.Sy rank
+: kalau ada 2 orang rank 1, yang berikutnya rank 3 (ada gap).
+.It
+.Sy dense_rank
+: kalau ada 2 orang rank 1, yang berikutnya rank 2 (nggak ada
+gap).
+.El
+.Ss Bagian 5.2: Ranking dalam Partition
+.Bd -literal -offset indent
+select ID, dept_name,
+       rank() over (partition by dept_name
+                    order by GPA desc) as dept_rank
+from dept_grades
+order by dept_name, dept_rank;
+.Ed
+.Sy Fungsinya:
+Rank dalam setiap grup (partition).
+.Ss Bagian 5.3: Ranking Functions Lain
+.Bl -tag -width "row_number" -offset indent
+.It Sy percent_rank
+Persentil.
+.It Sy cume_dist
+Cumulative distribution \(em fraction of tuples dengan nilai
+sebelumnya.
+.It Sy row_number
+Nomor baris. Non-deterministic kalau ada duplikat.
+.It Sy ntile(n)
+Bagi jadi n bucket dengan jumlah sama.
+.Bd -literal -offset indent
+select ID, ntile(4) over (order by GPA desc) as quartile
+from student_grades
+.Ed
+.El
+.Ss Bagian 5.4: Window Functions
+.Sy Moving average:
+.Bd -literal -offset indent
+select date,
+       sum(value) over (order by date
+                        rows between 1 preceding
+                                 and 1 following)
+from sales
+.Ed
+.Sy Artinya:
+Jumlahin value dari baris sebelumnya, baris sekarang, dan
+baris berikutnya.
+.Ss Bagian 5.5: Window Specification Lain
+.Bl -bullet -offset indent
+.It
+.Sy between rows unbounded preceding and current
+.It
+.Sy rows unbounded preceding
+.It
+.Sy range between 10 preceding and current row
+.It
+.Sy range interval 10 day preceding
+.El
+.Ss Bagian 5.6: Window dalam Partition
+.Bd -literal -offset indent
+select account_number, date_time,
+       sum(value) over (partition by account_number
+                        order by date_time
+                        rows unbounded preceding) as balance
+from transaction
+order by account_number, date_time
+.Ed
+.Sy Fungsinya:
+Hitung saldo berjalan tiap akun.
+.Ss Bagian 6: OLAP
+.Sy OLAP itu apa?
+Online Analytical Processing. Analisis data interaktif, bisa
+di-summarize dan di-view dari berbagai cara, dengan delay
+minimal.
+.Ss Bagian 6.1: Multidimensional Data
+.Sy Measure attributes:
+Atribut yang diukur dan bisa di-aggregate. Contoh:
+.Sy number
+(number of sales).
+.Sy Dimension attributes:
+Atribut yang nentuin dimensi. Contoh:
+.Sy item_name ,
+.Sy color ,
+.Sy size .
+.Ss Bagian 6.2: Cross-Tabulation
+Tabel yang nampilin agregat berdasarkan dua dimensi.
+.Bd -literal -offset indent
+              clothes_size
+color     dark  pastel  white  total
+skirt      8      35     10     53
+dress     20      10      5     35
+shirt     14       7     28     49
+pants     20       2      5     27
+total     62      54     48    164
+.Ed
+.Sy Istilah:
+.Bl -bullet -offset indent
+.It
+.Sy Pivot table
+: nama lain cross-tab.
+.It
+.Sy Row headers
+: nilai dari satu dimension attribute.
+.It
+.Sy Column headers
+: nilai dari dimension attribute lain.
+.It
+.Sy Cells
+: agregat dari measure attribute.
+.El
+.Ss Bagian 6.3: Data Cube
+Generalisasi cross-tab ke n dimensi.
+.Bd -literal -offset indent
+    3D: item_name x color x size
+    Bisa di-project ke 2D (cross-tab)
+    Bisa di-project ke 1D (baris total)
+    Bisa di-project ke 0D (grand total)
+.Ed
+.Ss Bagian 6.4: Hierarki dan Drill Down
+Cross-tab bisa extend ke hierarchy.
+.Bd -literal -offset indent
+clothes_size: all
+
+category      item_name   dark  pastel  white  total
+
+womenswear    skirt        8      35     10     53
+              dress       20      10      5     35
+              subtotal    28      45     15     88
+
+menswear      pants       20       2      5     27
+              shirt       14       7     28     49
+              subtotal    34       9     33     76
+
+total                     62      54     48    164
+.Ed
+.Sy Drill down:
+Dari coarser ke finer granularity.
+.Sy Roll up:
+Dari finer ke coarser.
+.Ss Bagian 6.5: Representasi Relational
+Cross-tab bisa direpresentasi sebagai relation. Nilai
+.Sy all
+dipakai buat aggregate.
+.Bd -literal -offset indent
+item_name  color    clothes_size  quantity
+skirt      dark     all           8
+skirt      pastel   all           35
+skirt      white    all           10
+skirt      all      all           53
+dress      dark     all           20
+...
+all        all      all           164
+.Ed
+.Ss Bagian 6.6: CUBE
+Operasi yang compute union of GROUP BY di semua subset
+atribut.
+.Bd -literal -offset indent
+select item_name, color, size, sum(number)
+from sales
+group by cube(item_name, color, size)
+.Ed
+.Sy Ini compute 8 grouping:
+.Bd -literal -offset indent
+(item_name, color, size)
+(item_name, color)
+(item_name, size)
+(color, size)
+(item_name)
+(color)
+(size)
+()
+.Ed
+.Sy Untuk grouping yang nggak ada atributnya,
+nilainya null.
+.Ss Bagian 6.7: GROUPING Function
+.Bd -literal -offset indent
+select item_name, color, size, sum(number),
+       grouping(item_name) as item_name_flag,
+       grouping(color) as color_flag,
+       grouping(size) as size_flag
+from sales
+group by cube(item_name, color, size)
+.Ed
+.Sy Return value:
+.Bl -bullet -offset indent
+.It
+.Sy 1
+kalau nilainya null yang berarti "all".
+.It
+.Sy 0
+kalau bukan.
+.El
+.Ss Bagian 6.8: ROLLUP
+Generate union di setiap prefix atribut.
+.Bd -literal -offset indent
+select item_name, color, size, sum(number)
+from sales
+group by rollup(item_name, color, size)
+.Ed
+.Sy Generate 4 grouping:
+.Bd -literal -offset indent
+(item_name, color, size)
+(item_name, color)
+(item_name)
+()
+.Ed
+.Sy Bedanya sama CUBE:
+.Bl -bullet -offset indent
+.It
+.Sy CUBE
+: semua subset.
+.It
+.Sy ROLLUP
+: cuma prefix.
+.El
+.Ss Bagian 6.9: Multiple ROLLUP dan CUBE
+.Bd -literal -offset indent
+select item_name, color, size, sum(number)
+from sales
+group by rollup(item_name), rollup(color, size)
+.Ed
+.Sy Hasilnya:
+Cross product dari dua set grouping:
+.Bd -literal -offset indent
+{item_name, ()} x {(color, size), (color), ()}
+= {(item_name, color, size),
+   (item_name, color),
+   (item_name),
+   (color, size),
+   (color),
+   ()}
+.Ed
+.Ss Bagian 6.10: OLAP Operations
+.Bl -tag -width "Drill down" -offset indent
+.It Sy Pivoting
+Ganti dimensi yang dipakai di cross-tab.
+.It Sy Slicing
+Bikin cross-tab dengan fixed value di satu dimensi.
+.It Sy Dicing
+Slicing dengan multiple dimensi.
+.It Sy Rollup
+Dari finer ke coarser granularity.
+.It Sy Drill down
+Dari coarser ke finer granularity.
+.El
+.Ss Bagian 6.11: OLAP Implementation
+.Bl -tag -width "HOLAP" -offset indent
+.It Sy MOLAP
+Multidimensional OLAP. Pakai multidimensional array
+di memory.
+.It Sy ROLAP
+Relational OLAP. Pakai fitur relational database aja.
+.It Sy HOLAP
+Hybrid OLAP. Sebagian summary di memory, sisanya di relational.
+.El
+.Ss Bagian 6.12: Precomputation
+.Sy Dulu:
+OLAP systems precompute
+.Sy semua
+aggregate biar response-nya cepet.
+.Sy Masalahnya:
+Butuh 2^n kombinasi GROUP BY. Buat 10 dimensi, itu 1024
+kombinasi. Space dan time-nya gede.
+.Sy Solusinya:
+Precompute sebagian aja. Sisanya compute on demand dari
+yang udah precomputed.
+.Bd -literal -offset indent
+aggregate (item_name, color)
+    bisa dihitung dari
+aggregate (item_name, color, size)
+.Ed
+.Sy Kecuali:
+"non-decomposable" aggregate kayak
+.Sy median .
+Median nggak bisa dihitung dari aggregate yang lebih detail.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                Inti
+JDBC                  API Java buat database
+PreparedStatement     Query dengan parameter
+SQL injection         Serangan lewat string concat
+Embedded SQL          SQL di dalam bahasa host
+Function              Return nilai
+Procedure             Nggak return nilai
+Table function        Return relation
+Trigger               Aksi otomatis
+Recursive query       Query yang refer ke diri sendiri
+Transitive closure    Semua jalur dari A ke B
+Ranking               rank, dense_rank, row_number
+Window function       Agregat berjalan
+OLAP                  Analisis multidimensi
+CUBE                  Semua subset grouping
+ROLLUP                Prefix grouping
+MOLAP                 Multidimensi in-memory
+ROLAP                 Relational
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy SQL itu bukan bahasa yang berdiri sendiri. Di aplikasi
+beneran, SQL selalu dipakai dari dalam bahasa lain (Java,
+Python, C). Cara aksesnya lewat API kayak JDBC. Dan yang paling
+penting: SELALU pakai prepared statement. SQL injection itu
+nyata, dan gampang banget kena kalau kamu concat string.
+.Pp
+Yang belum dijawab di sini: gimana caranya bikin connection
+pool biar nggak buka-tutup connection tiap query? Kapan pakai
+trigger, kapan pakai stored procedure? Gimana cara maintain
+materialized view? Itu topik lanjutan: connection pooling,
+stored procedure, view maintenance.
+.Sh SEE ALSO
+.Xr sql-intermediate 1 ,
+.Xr sql-intro 1 ,
+.Xr database-intro 1
+.Sh AUTHORS
+.An mroczect
