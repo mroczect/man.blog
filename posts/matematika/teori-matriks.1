@@ -1,0 +1,640 @@
+.Dd October 15, 2026
+.Dt TEORI-MATRIKS 1
+.Os
+.Sh NAME
+.Nm teori-matriks
+.Nd teori matriks santai, dari nol sampai kepake di RPL
+.Sh DESCRIPTION
+Ini catatan belajar matriks. Bahasa santai, pakai pseudocode,
+visualisasi ASCII, dan tiap konsep dijelasin kenapa dia ada.
+.Pp
+Cara baca: jangan skip. Bagian 1 sampai 9 itu materi. Bagian 10
+soal latihan. Jangan ngintip Bagian 11 sebelum ngerjain. Serius.
+Kamu bakal nyesel kalau skip soal.
+.Ss Bagian 1: Kenapa Sih Harus Belajar Matriks?
+Pernah buka spreadsheet nilai kuliah? Tabelnya kayak gini:
+.Bd -literal -offset indent
+          Matkul A   Matkul B   Matkul C
+Andi      80         75         85
+Budi      70         85         80
+Citra     90         80         75
+.Ed
+Dosen bilang: nilai akhir = 40% A + 30% B + 30% C.
+.Pp
+Cara pertama yang kepikiran: loop.
+.Bd -literal -offset indent
+untuk setiap mahasiswa:
+    nilai_akhir = 0.4*A + 0.3*B + 0.3*C
+.Ed
+Jalan. Tapi ada tiga masalah:
+.Bl -bullet -offset indent
+.It
+Kalau jumlah matkul berubah jadi 10, kamu harus nulis ulang
+rumusnya.
+.It
+Kalau mahasiswanya 10.000, kamu loop 10.000 kali.
+.It
+Kalau bobotnya berubah, kamu harus ubah di 10.000 tempat.
+.El
+Matriks itu jawaban buat masalah ini. Bukan satu-satunya, tapi
+yang paling rapi secara matematis.
+.Pp
+Di kode, data di atas sebenernya cuma array 2D:
+.Bd -literal -offset indent
+nilai = [
+    [80, 75, 85],   # Andi
+    [70, 85, 80],   # Budi
+    [90, 80, 75],   # Citra
+]
+.Ed
+Matriks di matematika cuma cara ngasih NAMA ke struktur ini, biar
+bisa dioperasiin secara formal. Kalau kamu paham array 2D, kamu
+udah 80% paham matriks. Sisanya 20%: notasi dan sifat yang bikin
+operasinya konsisten.
+.Ss Bagian 2: Matriks Itu Apa?
+Definisi formal: susunan angka dalam baris dan kolom.
+.Bd -literal -offset indent
+    [ 80  75  85 ]
+M = [ 70  85  80 ]
+    [ 90  80  75 ]
+.Ed
+Terus, kenapa harus ada notasi khusus? Karena kalau kamu ngomong
+"elemen baris 2 kolom 3" terus menerus, capek. Jadi:
+.Bd -literal -offset indent
+M = [a_ij]
+.Ed
+.Ar i
+= baris,
+.Ar j
+= kolom. Baca satu-satu:
+.Bd -literal -offset indent
+a_11 = 80   baris 1, kolom 1
+a_12 = 75   baris 1, kolom 2
+a_13 = 85   baris 1, kolom 3
+a_21 = 70   baris 2, kolom 1
+a_23 = 80   baris 2, kolom 3
+.Ed
+Jebakan yang paling sering: indeks pertama itu BARIS, bukan
+kolom. Banyak yang ketuker di awal. Ingat:
+.Sy a Ns _baris,k colon .
+.Pp
+Satu lagi: di matematika, indeks mulai dari 1. Di kode, mulai
+dari 0.
+.Bd -literal -offset indent
+a_11 (matematika) = M[0][0] (kode)
+a_23 (matematika) = M[1][2] (kode)
+.Ed
+Ini cuma konvensi. Jangan pusing. Yang penting konsisten.
+.Pp
+Sekarang tiga istilah yang sering ketuker:
+.Bl -tag -width "Vektor kolom" -offset indent
+.It Sy Skalar
+Satu angka doang.
+.Bd -literal -offset indent
+skalar = 85
+.Ed
+.It Sy Vektor
+Deretan angka dalam satu baris atau satu kolom.
+.Bd -literal -offset indent
+vektor_baris = [80, 85, 90]
+
+vektor_kolom = [80,
+                85,
+                90]
+.Ed
+Kenapa dibedain baris dan kolom? Karena orientasi ngaruh pas
+perkalian matriks. Vektor baris dikali matriks beda hasilnya
+sama vektor kolom dikali matriks.
+.It Sy Matriks
+Banyak baris dan banyak kolom. Kayak tabel.
+.Bd -literal -offset indent
+matriks = [
+    [80, 75, 85],
+    [70, 85, 80],
+    [90, 80, 75],
+]
+.Ed
+.El
+Ringkasan cepat:
+.Bd -literal -offset indent
+Skalar      1 angka
+Vektor      1 baris ATAU 1 kolom
+Matriks     banyak baris DAN banyak kolom
+.Ed
+Jadi matriks itu generalisasi dari vektor. Vektor itu matriks
+yang salah satu dimensinya 1. Skalar itu matriks 1x1 (tapi
+jarang disebut matriks).
+.Ss Bagian 3: Kapan Dua Matriks Dianggap Sama?
+Kalau ukurannya sama dan tiap elemen di posisi yang sama nilainya
+sama.
+.Bd -literal -offset indent
+    [x  4]          [3  4]
+A = [7  y]      B = [7  9]
+.Ed
+Kalau A = B, berarti
+.Em x No = 3
+dan
+.Em y No = 9 .
+.Pp
+Kenapa harus ordo sama? Karena kalau beda ukuran, kamu nggak bisa
+bandingin posisi. Matriks 2x2 sama matriks 3x3 nggak ada artinya
+"sama".
+.Ss Bagian 4: Jenis-Jenis Matriks
+Ada beberapa jenis matriks yang punya nama khusus, karena punya
+sifat khusus yang berguna.
+.Bl -tag -width "Matriks identitas" -offset indent
+.It Sy Matriks Persegi
+Baris sama dengan kolom. Kenapa penting? Karena cuma matriks
+persegi yang bisa punya determinan dan invers.
+.Bd -literal -offset indent
+    [4  6]
+A = [3  8]      // 2x2, persegi
+.Ed
+.It Sy Matriks Nol
+Semua elemennya 0. Berperan kayak angka 0 di penjumlahan:
+.Sy A No + O No = A .
+.Bd -literal -offset indent
+    [0  0]
+O = [0  0]
+.Ed
+.It Sy Matriks Identitas
+Diagonal utamanya 1, sisanya 0. Notasi
+.Sy I .
+Berperan kayak angka 1 di perkalian:
+.Sy A Ns \(mu I No = A .
+Jadi kalau kamu cari "invers", kamu cari matriks yang kalau
+dikali A hasilnya I.
+.Bd -literal -offset indent
+    [1  0  0]
+I = [0  1  0]
+    [0  0  1]
+.Ed
+.It Sy Matriks Transpos
+Tukar baris jadi kolom, kolom jadi baris. Notasi
+.Sy A Ns ^T .
+Kadang kamu butuh flip orientasi matriks. Misal vektor baris
+jadi vektor kolom.
+.Bd -literal -offset indent
+    [6   4  24]         [6   1]
+A = [1  -9   8]     A^T = [4  -9]
+                            [24  8]
+.Ed
+Pseudocode transpos:
+.Bd -literal -offset indent
+untuk i dari 0 sampai jumlah_baris:
+    untuk j dari 0 sampai jumlah_kolom:
+        A_T[j][i] = A[i][j]
+.Ed
+Perhatiin: indeks ketuker. Itu intinya.
+.El
+.Ss Bagian 5: Operasi Matriks
+.Bl -tag -width "Perkalian" -offset indent
+.It Sy Penjumlahan
+Syarat: ordo harus sama. Kalau nggak sama, nggak bisa dijumlahin.
+Aturannya jumlahkan elemen yang seletak.
+.Bd -literal -offset indent
+[3  8]   [4   0]   [7   8]
+[4  6] + [1  -9] = [5  -3]
+.Ed
+Kenapa cuma bisa kalau ordo sama? Karena "penjumlahan" di
+matriks itu penjumlahan biasa yang dijalanin ke semua posisi
+sekaligus. Kalau ukurannya beda, posisinya nggak ada yang bisa
+dipasangin.
+.Pp
+Pseudocode:
+.Bd -literal -offset indent
+untuk i, untuk j:
+    C[i][j] = A[i][j] + B[i][j]
+.Ed
+.It Sy Pengurangan
+Sama kayak penjumlahan, tapi dikurang. Syarat ordo juga sama.
+.Bd -literal -offset indent
+[3  8]   [4   0]   [-1   8]
+[4  6] - [1  -9] = [ 3  15]
+.Ed
+.It Sy Perkalian Skalar
+Kalikan semua elemen dengan satu angka.
+.Bd -literal -offset indent
+    [4  6]         [8  12]
+2 x [3  8] = [6  16]
+.Ed
+Pseudocode:
+.Bd -literal -offset indent
+untuk i, untuk j:
+    C[i][j] = k * A[i][j]
+.Ed
+.It Sy Perkalian Matriks dengan Matriks
+.Ini yang paling bikin pusing.
+.Pp
+Syarat: jumlah kolom A harus sama dengan jumlah baris B.
+.Pp
+Kenapa? Karena cara hitungnya: ambil satu baris dari A, dan
+satu kolom dari B, kalikan posisi per posisi, jumlahkan. Kalau
+panjangnya beda, nggak bisa dipasangin.
+.Pp
+Visualisasi dulu, biar nggak bengong:
+.Bd -literal -offset indent
+A = [1  2  3]       B = [7   8]
+    [4  5  6]           [9  10]
+                        [11 12]
+
+Elemen (1,1) dari AB:
+
+  baris 1 A: [1  2  3]
+  kolom 1 B: [7]
+             [9]
+             [11]
+             |
+             v
+  1*7 + 2*9 + 3*11 = 7 + 18 + 33 = 58
+
+Bayangin: baris A diputer tegak, terus "nyium" kolom B.
+Jumlahin hasilnya.
+.Ed
+Hasil lengkapnya:
+.Bd -literal -offset indent
+    [58   64]
+AB = [139 154]
+.Ed
+Pseudocode:
+.Bd -literal -offset indent
+untuk i dari 0 sampai baris_A:
+    untuk j dari 0 sampai kolom_B:
+        sum = 0
+        untuk k dari 0 sampai kolom_A:
+            sum = sum + A[i][k] * B[k][j]
+        C[i][j] = sum
+.Ed
+Loop
+.Ar k
+itu yang jalan sepanjang baris A dan kolom B. Tanpa dia, kamu
+nggak bisa jumlahin hasil perkalian per posisi.
+.Pp
+.Sy Fakta penting:
+.Sy AB No \(!= BA .
+Urutan ngaruh. Ini beda sama perkalian angka biasa yang
+2 x 3 = 3 x 2. Di matriks, hasilnya bisa beda total.
+.El
+.Ss Bagian 6: Determinan
+Determinan itu satu angka ajaib yang dihitung dari matriks
+persegi. Notasi
+.Sy det(A)
+atau
+.Sy |A| .
+.Pp
+Fungsinya kayak satpam di club: cek matriks ini boleh masuk
+(artinya bisa di-invers) atau nggak.
+.Bl -bullet -offset indent
+.It
+Kalau
+.Sy det(A) No = 0
+\(-> matriksnya nggak bisa di-invers. Disebut
+.Em singular .
+.It
+Kalau
+.Sy det(A) No \(!= 0
+\(-> matriksnya bisa di-invers.
+.El
+.Sy Determinan 2x2:
+.Bd -literal -offset indent
+    [a  b]
+A = [c  d]
+
+det(A) = a*d - b*c
+.Ed
+Kenapa
+.Sy a Ns \(mu d No - b Ns \(mu c ?
+Karena secara geometris, itu luas parallelogram yang dibentuk
+oleh vektor (a,c) dan (b,d). Kalau luasnya 0, dua vektor itu
+segaris, dan matriksnya nggak bisa dibalik.
+.Pp
+Contoh:
+.Bd -literal -offset indent
+    [4  6]
+B = [3  8]
+
+det(B) = 4*8 - 6*3 = 32 - 18 = 14
+.Ed
+.Sy Determinan 3x3:
+.Bd -literal -offset indent
+    [a  b  c]
+A = [d  e  f]
+    [g  h  i]
+
+det(A) = a*(ei - fh) - b*(di - fg) + c*(dh - eg)
+.Ed
+Tanda
+.Sy + No - No +
+selang-seling karena rumusnya dari ekspansi kofaktor. Pola itu
+konsisten kalau determinannya makin gede.
+.Pp
+Contoh:
+.Bd -literal -offset indent
+    [2  3  1]
+A = [1  2  1]
+    [3  1  2]
+
+det(A) = 2*(2*2 - 1*1) - 3*(1*2 - 1*3) + 1*(1*1 - 2*3)
+       = 2*3 - 3*(-1) + 1*(-5)
+       = 6 + 3 - 5
+       = 4
+.Ed
+.Sy Determinan 4x4 ke atas:
+Konsepnya sama, submatriksnya makin gede. Pola tanda
+.Sy + - + -
+bergantian.
+.Ss Bagian 7: Invers
+Di angka biasa, kalau kamu punya
+.Sy 2x No = 10 ,
+kamu bagi dua sisi dengan 2, dapat
+.Sy x No = 5 .
+.Pp
+Di matriks nggak ada operasi "bagi". Yang ada: kali dengan
+invers.
+.Bd -literal -offset indent
+Kalau AX = B
+Maka X = A_inv * B
+.Ed
+Invers itu kayak undo button. Kayak
+.Sy 1/8
+kebalikan dari 8, karena
+.Sy 8 Ns \(mu 1/8 No = 1 .
+Begitu juga
+.Sy A Ns ^-1
+kebalikan dari A, karena
+.Sy A Ns \(mu A Ns ^-1 No = I .
+.Pp
+Syarat punya invers:
+.Sy det(A) No \(!= 0 .
+Kalau determinannya 0, ya nggak punya invers. Titik.
+.Pp
+.Sy Invers 2x2:
+.Bd -literal -offset indent
+    [a  b]      1     [ d  -b]
+A = [c  d]  ->  --- * [-c   a]
+             ad-bc
+.Ed
+Kenapa rumusnya kayak gitu? Karena kalau kamu kalikan matriks
+itu dengan A, hasilnya I. Rumusnya didesain biar hasilnya I.
+Trik gampang: tukar
+.Ar a
+dan
+.Ar d ,
+negatifkan
+.Ar b
+dan
+.Ar c ,
+bagi dengan determinan.
+.Pp
+Contoh:
+.Bd -literal -offset indent
+    [4  7]
+A = [2  6]
+
+det(A) = 4*6 - 7*2 = 24 - 14 = 10
+
+Tukar & negatifkan:
+[d  -b]   [6  -7]
+[-c  a] = [-2  4]
+
+Bagi determinan:
+A_inv = 1/10 * [6  -7]  = [0.6  -0.7]
+               [-2  4]    [-0.2  0.4]
+.Ed
+.Sy Invers 3x3 ke atas:
+Dua metode.
+.Bl -tag -width "Metode 2" -offset indent
+.It Sy Metode 1: Operasi Baris Elementer (OBE)
+Gabung A sama I jadi
+.Sy [A | I] .
+Lakuin operasi baris sampai sisi kiri jadi I. Sisi kanan
+otomatis jadi
+.Sy A Ns ^-1 .
+.Bd -literal -offset indent
+[A | I]  ->  [I | A_inv]
+.Ed
+.It Sy Metode 2: Minor, Kofaktor, Adjugate
+Langkah-langkah:
+.Bl -enum -offset indent
+.It
+Hitung determinan. Kalau 0, stop, nggak ada invers.
+.It
+Hitung matriks minor. Minor M_ij = determinan submatriks yang
+didapat dengan buang baris i dan kolom j.
+.It
+Hitung matriks kofaktor. C_ij = (-1)^(i+j) * M_ij. Tandanya
+selang-seling kayak papan catur:
+.Bd -literal -offset indent
+[+  -  +]
+[-  +  -]
+[+  -  +]
+.Ed
+.It
+Transpose matriks kofaktor \(-> adjugate.
+.It
+Bagi dengan determinan:
+.Sy A Ns ^-1 No = (1/det) Ns \(mu adj(A) .
+.El
+.El
+.Sy Aplikasi: sistem persamaan linear.
+Contoh: grup naik bus. Anak $3, dewasa $3.2, total $118.4.
+Pulang naik train. Anak $3.5, dewasa $3.6, total $135.2.
+Berapa anak, berapa dewasa?
+.Pp
+Ubah jadi matriks:
+.Bd -literal -offset indent
+3*x1 + 3.2*x2 = 118.4
+3.5*x1 + 3.6*x2 = 135.2
+
+Dalam bentuk matriks:
+[3    3.2] [x1]   [118.4]
+[3.5  3.6] [x2] = [135.2]
+.Ed
+Cari invers matriks 2x2 di kiri, kali ke kanan, kamu dapat
+.Sy x1 No = 16
+dan
+.Sy x2 No = 22 .
+Jadi 16 anak, 22 dewasa.
+.Ss Bagian 8: Matriks di RPL
+.Bl -tag -width "Machine Learning" -offset indent
+.It Sy Transformasi Gambar Digital
+Gambar disimpan sebagai matriks warna. Mau naikin brightness?
+Tinggal jumlahin matriks.
+.Bd -literal -offset indent
+    [100  120]      [20  20]      [120  140]
+A = [ 80  150]  B = [20  20]  C = [100  170]
+.Ed
+Tiap piksel ditambah 20. Selesai. Satu operasi, semua piksel
+keupdate.
+.It Sy Hitung Nilai Akhir Otomatis
+Contoh yang paling sering kepake di RPL.
+.Bd -literal -offset indent
+    [80  75  85]      [0.40]
+M = [70  85  80]  W = [0.30]
+    [90  80  75]      [0.30]
+
+N = M * W
+
+    [80.0]      Andi
+N = [77.5]      Budi
+    [82.5]      Citra
+.Ed
+Satu operasi perkalian, semua mahasiswa kehitung. Nggak perlu
+loop manual.
+.It Sy Grafika Komputer
+Semua transformasi 3D (rotasi, translasi, scaling) pakai
+matriks. Contoh rotasi 90 derajat di 2D:
+.Bd -literal -offset indent
+[0  -1]
+[1   0]
+.Ed
+.It Sy Machine Learning
+Data training = matriks. Ini contoh konkret. Satu neuron di
+neural network:
+.Bd -literal -offset indent
+output = activation(W * x + b)
+.Ed
+W itu matriks bobot, x itu vektor input, b itu vektor bias.
+Waktu kamu nanya ke ChatGPT, yang terjadi di belakang layar:
+jutaan perkalian matriks berantai. GPT-4 punya sekitar 1.8
+triliun parameter. Semuanya disusun jadi matriks.
+.Pp
+TikTok algorithm, Spotify Discover Weekly, Instagram face
+filter: semuanya matriks. Bukan "kayak" matriks. Emang matriks.
+.El
+.Ss Bagian 9: Soal Latihan
+Kerjain dulu sebelum liat Bagian 10. Serius.
+.Bl -tag -width "Soal 5" -offset indent
+.It Sy Soal 1
+Diketahui:
+.Bd -literal -offset indent
+    [2  4]      [1  3]
+A = [6  8]  B = [5  7]
+.Ed
+Hitung (a) A + B, (b) A - B, (c) A \(mu B.
+.It Sy Soal 2
+Hitung determinan:
+.Bd -literal -offset indent
+    [5  3]
+A = [2  4]
+.Ed
+.It Sy Soal 3
+Cari invers:
+.Bd -literal -offset indent
+    [3  1]
+A = [5  2]
+.Ed
+.It Sy Soal 4
+Matriks nilai:
+.Bd -literal -offset indent
+    [80  75  85]
+M = [70  85  80]
+    [90  80  75]
+.Ed
+Bobot: 40%, 30%, 30%. Hitung nilai akhir tiap mahasiswa.
+.It Sy Soal 5
+Kembangkan matriks nilai 5 mahasiswa (tambah 2 mahasiswa
+sendiri). Hitung rata-rata tiap matkul, terus hitung nilai
+akhir pakai bobot 40%, 30%, 30%.
+.El
+.Ss Bagian 10: Kunci Jawaban
+.Bl -tag -width "Soal 5" -offset indent
+.It Sy Soal 1
+.Bd -literal -offset indent
+a. A + B = [2+1  4+3] = [3   7]
+           [6+5  8+7]   [11 15]
+
+b. A - B = [2-1  4-3] = [1  1]
+           [6-5  8-7]   [1  1]
+
+c. A x B:
+   (1,1) = 2*1 + 4*5 = 2 + 20 = 22
+   (1,2) = 2*3 + 4*7 = 6 + 28 = 34
+   (2,1) = 6*1 + 8*5 = 6 + 40 = 46
+   (2,2) = 6*3 + 8*7 = 18 + 56 = 74
+
+   AB = [22  34]
+        [46  74]
+.Ed
+.It Sy Soal 2
+.Bd -literal -offset indent
+det(A) = 5*4 - 3*2 = 20 - 6 = 14
+.Ed
+.It Sy Soal 3
+.Bd -literal -offset indent
+Langkah 1: det(A) = 3*2 - 1*5 = 6 - 5 = 1
+
+Langkah 2: [d  -b]   [2  -1]
+           [-c  a] = [-5   3]
+
+Langkah 3: A_inv = 1/1 * [2  -1] = [2  -1]
+                        [-5  3]   [-5  3]
+
+Cek: A * A_inv harus = I.
+     [3  1]   [2  -1]   [3*2+1*(-5)   3*(-1)+1*3]   [1  0]
+     [5  2] * [-5  3] = [5*2+2*(-5)   5*(-1)+2*3] = [0  1]
+.Ed
+.It Sy Soal 4
+.Bd -literal -offset indent
+Andi:  0.4*80 + 0.3*75 + 0.3*85 = 32 + 22.5 + 25.5 = 80.0
+Budi:  0.4*70 + 0.3*85 + 0.3*80 = 28 + 25.5 + 24   = 77.5
+Citra: 0.4*90 + 0.3*80 + 0.3*75 = 36 + 24   + 22.5 = 82.5
+
+    [80.0]
+N = [77.5]
+    [82.5]
+.Ed
+.It Sy Soal 5
+Contoh dengan 2 mahasiswa tambahan:
+.Bd -literal -offset indent
+    [80  75  85]   Andi
+    [70  85  80]   Budi
+M = [90  80  75]   Citra
+    [85  80  70]   Dodi
+    [75  90  88]   Eka
+
+Rata-rata tiap matkul:
+Matkul A: (80+70+90+85+75)/5 = 400/5 = 80.0
+Matkul B: (75+85+80+80+90)/5 = 410/5 = 82.0
+Matkul C: (85+80+75+70+88)/5 = 398/5 = 79.6
+
+Nilai akhir (bobot 0.4, 0.3, 0.3):
+Andi:  0.4*80 + 0.3*75 + 0.3*85 = 80.0
+Budi:  0.4*70 + 0.3*85 + 0.3*80 = 77.5
+Citra: 0.4*90 + 0.3*80 + 0.3*75 = 82.5
+Dodi:  0.4*85 + 0.3*80 + 0.3*70 = 79.0
+Eka:   0.4*75 + 0.3*90 + 0.3*88 = 83.4
+.Ed
+.El
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep             Inti
+Matriks            Tabel angka dalam baris & kolom
+Ordo               Ukuran, m x n
+Elemen             Angka di dalam, a_ij
+Skalar             1 angka
+Vektor             1 baris atau 1 kolom
+Transpos           Tukar baris & kolom
+Penjumlahan        Jumlahin elemen seletak, ordo harus sama
+Pengurangan        Kurangin elemen seletak, ordo harus sama
+Perkalian skalar   Kali semua elemen dengan 1 angka
+Perkalian matriks  Baris x kolom, syarat kolom A = baris B
+Determinan         Angka "satpam", cek bisa di-invers atau nggak
+Invers             Kebalikan matriks, A * A_inv = I
+Syarat invers      det(A) != 0
+.Ed
+Kalau kamu cuma inget satu hal dari dokumen ini, inget ini:
+.Sy AB No \(!= BA .
+Itu satu-satunya hal di matriks yang beda dari aritmetika biasa.
+Sisanya cuma penjumlahan dan perkalian yang dijalanin ke banyak
+posisi sekaligus.
+.Pp
+Yang belum dijawab di sini: kenapa determinan 3x3 rumusnya
+kayak gitu? Kenapa transpose berguna di ML? Kenapa matriks
+bisa dipakai buat kompresi gambar (SVD)? Itu topik lanjutan.
+Kalau penasaran, cari sendiri. Itu cara belajar yang bener.
+.Sh SEE ALSO
+.Xr zig 1 ,
+.Xr mandoc 1
+.Sh AUTHORS
+.An mroczect
