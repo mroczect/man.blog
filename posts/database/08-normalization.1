@@ -1,0 +1,642 @@
+.Dd 2026-10-15 17:00:00
+.Dt NORMALIZATION 1
+.Os
+.Sh NAME
+.Nm normalization
+.Nd desain database relational, dari 1NF sampai 4NF
+.Sh DESCRIPTION
+Ini catatan Chapter 8 dari buku Database System Concepts. Isinya:
+kenapa desain database bisa jelek, gimana cara deteksi, dan gimana
+cara benerin pakai normalisasi.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+normalisasi itu bukan aturan hafalan, tapi alat diagnosis. Kalau
+kamu paham kenapa, kamu bisa ngerancang schema yang bener tanpa
+harus ngecek 4NF dulu.
+.Ss Bagian 1: Kenapa Desain Bisa Jelek?
+Coba gabungin tabel
+.Sy instructor
+dan
+.Sy department
+jadi satu:
+.Bd -literal -offset indent
+inst_dept(ID, name, salary, dept_name, building, budget)
+.Ed
+Isinya:
+.Bd -literal -offset indent
+ID     name       salary  dept_name   building  budget
+22222  Einstein   95000   Physics     Watson    70000
+12121  Wu         90000   Finance     Painter   120000
+32343  El Said    60000   History     Painter   50000
+45565  Katz       75000   Comp. Sci.  Taylor    100000
+.Ed
+.Sy Masalahnya:
+.Bl -bullet -offset indent
+.It
+Budget Physics diulang tiap ada instructor dari Physics.
+.It
+Kalau budget berubah, harus update di banyak baris.
+.It
+Kalau lupa update salah satu, data jadi nggak konsisten.
+.El
+Ini yang disebut
+.Sy redundancy ,
+dan bikin
+.Sy update anomaly .
+.Ss Bagian 2: Functional Dependency
+.Sy Functional dependency (FD)
+itu constraint yang bilang "kalau nilai A diketahui, nilai B
+pasti ketentuan".
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+alpha -> beta
+.Ed
+.Sy Artinya:
+Kalau dua tuple setuju di atribut
+.Sy alpha ,
+mereka harus setuju di atribut
+.Sy beta .
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+dept_name -> building, budget
+.Ed
+Kalau kamu tau
+.Sy dept_name
+= "Physics", kamu tau
+.Sy building
+= "Watson" dan
+.Sy budget
+= 70000. Nggak mungkin beda.
+.Pp
+.Sy Kenapa FD penting?
+Karena FD adalah "hukum" yang berlaku di data kamu. Kalau kamu
+tau FD-nya, kamu bisa deteksi desain yang jelek. Kalau kamu
+nggak tau, kamu cuma bisa nebak.
+.Ss Bagian 2.1: FD vs Key
+.Sy Key itu special case dari FD.
+.Bl -bullet -offset indent
+.It
+.Sy K
+adalah superkey kalau
+.Sy K -> R
+\(em artinya semua atribut di R.
+.It
+.Sy K
+adalah candidate key kalau
+.Sy K -> R
+dan nggak ada subset dari K yang masih superkey.
+.El
+.Sy Contoh:
+.Bd -literal -offset indent
+ID -> ID, name, salary, dept_name, building, budget
+.Ed
+Kalau
+.Sy ID
+uniquely identify satu instructor, maka
+.Sy ID
+adalah superkey.
+.Ss Bagian 2.2: Trivial vs Non-trivial FD
+.Bl -tag -width "Non-trivial" -offset indent
+.It Sy Trivial
+FD yang selalu true.
+.Bd -literal -offset indent
+ID, name -> ID
+name -> name
+.Ed
+.Sy Kenapa trivial? Karena
+.Sy beta
+subset dari
+.Sy alpha .
+.It Sy Non-trivial
+FD yang nggak selalu true. Yang ini yang berguna.
+.Bd -literal -offset indent
+ID -> name
+dept_name -> building
+.Ed
+.El
+.Ss Bagian 3: Closure dan Armstrong's Axioms
+.Sy Masalah:
+Dari set FD yang kamu tau, sebenernya banyak FD lain yang
+"tersirat". Contoh: kalau
+.Sy A -> B
+dan
+.Sy B -> C ,
+berarti
+.Sy A -> C .
+.Pp
+.Sy Solusi:
+Hitung
+.Sy closure
+dari F, dilambangkan
+.Sy F Ns ^+ .
+F+ adalah superset dari F \(em berisi semua FD yang logically
+implied.
+.Pp
+.Sy Armstrong's Axioms:
+.Bl -tag -width "Transitivity" -offset indent
+.It Sy Reflexivity
+Kalau
+.Sy beta
+subset
+.Sy alpha ,
+maka
+.Sy alpha -> beta .
+.It Sy Augmentation
+Kalau
+.Sy alpha -> beta ,
+maka
+.Sy gamma alpha -> gamma beta .
+.It Sy Transitivity
+Kalau
+.Sy alpha -> beta
+dan
+.Sy beta -> gamma ,
+maka
+.Sy alpha -> gamma .
+.El
+.Sy Tiga axiom ini sound dan complete.
+Artinya: cuma generate FD yang beneran hold (sound), dan generate
+semua FD yang hold (complete).
+.Ss Bagian 3.1: Additional Rules
+Ini bisa diturunin dari Armstrong's, tapi berguna buat praktis:
+.Bl -tag -width "Pseudotransitivity" -offset indent
+.It Sy Union
+Kalau
+.Sy alpha -> beta
+dan
+.Sy alpha -> gamma ,
+maka
+.Sy alpha -> beta gamma .
+.It Sy Decomposition
+Kalau
+.Sy alpha -> beta gamma ,
+maka
+.Sy alpha -> beta
+dan
+.Sy alpha -> gamma .
+.It Sy Pseudotransitivity
+Kalau
+.Sy alpha -> beta
+dan
+.Sy gamma beta -> delta ,
+maka
+.Sy alpha gamma -> delta .
+.El
+.Ss Bagian 4: Attribute Closure
+.Sy Algoritma:
+Diberikan set atribut
+.Sy alpha ,
+hitung
+.Sy alpha Ns ^+
+\(em himpunan atribut yang functionally determined by
+.Sy alpha
+di bawah F.
+.Bd -literal -offset indent
+result := alpha
+while (result berubah) do
+    untuk setiap beta -> gamma di F do
+        kalau beta subset result
+            result := result union gamma
+.Ed
+.Ss Bagian 4.1: Kegunaan Attribute Closure
+.Bl -enun -offset indent
+.It
+.Sy Testing superkey.
+Kalau
+.Sy alpha Ns ^+
+contains semua atribut R, maka
+.Sy alpha
+superkey.
+.It
+.Sy Testing functional dependency.
+Cek apakah
+.Sy alpha -> beta
+hold: hitung
+.Sy alpha Ns ^+ ,
+cek apakah contains
+.Sy beta .
+.It
+.Sy Computing closure of F.
+Buat tiap
+.Sy gamma
+subset R, hitung
+.Sy gamma Ns ^+ .
+Buat tiap
+.Sy S
+subset
+.Sy gamma Ns ^+ ,
+output FD
+.Sy gamma -> S .
+.El
+.Ss Bagian 5: Canonical Cover
+.Sy Masalah:
+Set FD bisa punya redundancy. Contoh:
+.Bd -literal -offset indent
+{ A -> B, B -> C, A -> C }
+.Ed
+.Sy A -> C
+redundan, karena bisa diturunin dari
+.Sy A -> B
+dan
+.Sy B -> C .
+.Pp
+.Sy Solusi:
+Canonical cover \(em set FD yang "minimal", equivalent dengan F,
+tanpa dependency atau bagian dependency yang redundan.
+.Ss Bagian 5.1: Extraneous Attribute
+.Sy Definisi:
+Atribut A disebut
+.Sy extraneous
+di
+.Sy alpha
+(kiri) atau
+.Sy beta
+(kanan) kalau bisa dihapus tanpa ngubah closure.
+.Pp
+.Sy Cara test:
+.Bl -enun -offset indent
+.It
+Test A extraneous di kiri
+.Sy alpha :
+hitung
+.Sy (alpha - A) Ns ^+
+pakai F. Kalau contains
+.Sy beta ,
+A extraneous.
+.It
+Test A extraneous di kanan
+.Sy beta :
+hitung
+.Sy alpha Ns ^+
+pakai
+.Sy F' = (F - {alpha -> beta}) union {alpha -> (beta - A)} .
+Kalau contains A, A extraneous.
+.El
+.Ss Bagian 5.2: Algoritma Canonical Cover
+.Bd -literal -offset indent
+repeat
+    pakai union rule: kalau ada alpha -> beta1
+    dan alpha -> beta2, ganti jadi alpha -> beta1 beta2
+    cari FD dengan extraneous attribute
+    kalau ketemu, hapus
+until F nggak berubah
+.Ed
+.Ss Bagian 6: Normal Forms
+Sekarang masuk inti: normal forms. Ini tingkatan "kebersihan"
+schema.
+.Ss Bagian 6.1: First Normal Form (1NF)
+.Sy Definisi:
+Semua atribut harus
+.Sy atomic
+\(em nggak bisa dipecah lagi.
+.Pp
+.Sy Contoh non-atomic:
+.Bl -bullet -offset indent
+.It
+Set of names.
+.It
+Composite attribute kayak
+.Sy address(street, city, zip) .
+.It
+Identification number kayak
+.Sy CS101
+yang bisa dipecah jadi
+.Sy CS
++ 101.
+.El
+.Sy Kenapa penting?
+Karena non-atomic values complicate storage dan encourage
+redundancy.
+.Pp
+.Sy Asumsi:
+Semua relasi di buku ini udah 1NF.
+.Ss Bagian 6.2: Boyce-Codd Normal Form (BCNF)
+.Sy Definisi:
+Relation schema R in BCNF kalau untuk setiap FD
+.Sy alpha -> beta
+di F+, minimal satu kondisi true:
+.Bl -enun -offset indent
+.It
+.Sy alpha -> beta
+trivial (beta subset alpha).
+.It
+.Sy alpha
+superkey untuk R.
+.El
+.Sy Contoh yang bukan BCNF:
+.Bd -literal -offset indent
+instr_dept(ID, name, salary, dept_name, building, budget)
+.Ed
+Karena
+.Sy dept_name -> building, budget
+hold, tapi
+.Sy dept_name
+bukan superkey.
+.Ss Bagian 6.3: BCNF Decomposition
+.Sy Kalau ada FD
+.Sy alpha -> beta
+yang violate BCNF:
+.Bd -literal -offset indent
+R diganti jadi:
+  R1 = (alpha union beta)
+  R2 = (R - (beta - alpha))
+.Ed
+.Sy Contoh:
+.Bd -literal -offset indent
+alpha = dept_name
+beta = building, budget
+
+R1 = (dept_name, building, budget)
+R2 = (ID, name, salary, dept_name)
+.Ed
+.Ss Bagian 6.4: Third Normal Form (3NF)
+.Sy Kenapa perlu 3NF?
+Karena BCNF nggak selalu bisa dependency preserving. Kadang
+dekomposisi ke BCNF bikin FD tertentu nggak bisa dicek tanpa
+join. Ini mahal.
+.Pp
+.Sy Solusinya:
+3NF \(em normal form yang lebih lemah, tapi selalu bisa
+lossless dan dependency preserving.
+.Pp
+.Sy Definisi:
+R in 3NF kalau untuk setiap FD
+.Sy alpha -> beta
+di F+, minimal satu:
+.Bl -enun -offset indent
+.It
+.Sy alpha -> beta
+trivial.
+.It
+.Sy alpha
+superkey.
+.It
+Setiap atribut A di
+.Sy beta - alpha
+ada di candidate key untuk R.
+.El
+.Sy BCNF implies 3NF.
+Artinya, kalau 3NF belum tentu BCNF, tapi BCNF pasti 3NF.
+.Ss Bagian 6.5: 3NF Decomposition Algorithm
+.Bd -literal -offset indent
+Fc = canonical cover untuk F
+i := 0
+for each alpha -> beta di Fc do
+    kalau nggak ada Rj yang contains alpha beta
+        i := i + 1
+        Ri := alpha beta
+kalau nggak ada Rj yang contains candidate key untuk R
+    i := i + 1
+    Ri := candidate key
+repeat
+    hapus Rj yang subset dari Rk
+until nggak ada
+return (R1, R2, ..., Ri)
+.Ed
+.Ss Bagian 6.6: Contoh 3NF
+.Bd -literal -offset indent
+cust_banker_branch(customer_id, employee_id, branch_name, type)
+
+FD:
+  customer_id, employee_id -> branch_name, type
+  employee_id -> branch_name
+  customer_id, branch_name -> employee_id
+.Ed
+Canonical cover:
+.Bd -literal -offset indent
+customer_id, employee_id -> type
+employee_id -> branch_name
+customer_id, branch_name -> employee_id
+.Ed
+Hasil 3NF:
+.Bd -literal -offset indent
+(customer_id, employee_id, type)
+(customer_id, branch_name, employee_id)
+.Ed
+.Ss Bagian 7: Multivalued Dependency (MVD)
+.Sy Masalah:
+Ada schema yang udah BCNF tapi masih punya redundancy.
+.Bd -literal -offset indent
+inst_info(ID, child_name, phone)
+.Ed
+Isinya:
+.Bd -literal -offset indent
+99999  David    512-555-1234
+99999  David    512-555-4321
+99999  William  512-555-1234
+99999  William  512-555-4321
+.Ed
+.Sy Masalah:
+Nggak ada FD non-trivial. Jadi schema ini BCNF. Tapi kalau
+kamu nambah phone baru, kamu harus nambah 2 tuple (satu per
+child). Ini
+.Sy insertion anomaly .
+.Pp
+.Sy Solusinya:
+Multivalued dependency (MVD).
+.Ss Bagian 7.1: Definisi MVD
+.Sy Notasi:
+.Bd -literal -offset indent
+alpha ->> beta
+.Ed
+.Sy Artinya:
+Kalau
+.Sy t1
+dan
+.Sy t2
+setuju di
+.Sy alpha ,
+maka ada
+.Sy t3
+dan
+.Sy t4
+yang "tuker" nilai
+.Sy beta
+dan
+.Sy R - beta - alpha .
+.Pp
+.Sy Informal:
+Diberikan nilai
+.Sy Y
+(contoh: ID), dia punya set nilai
+.Sy Z
+(child_name) dan set nilai
+.Sy W
+(phone). Dua set ini
+.Sy independent .
+.Ss Bagian 7.2: Fourth Normal Form (4NF)
+.Sy Definisi:
+R in 4NF kalau untuk setiap MVD
+.Sy alpha ->> beta
+di D+, minimal satu:
+.Bl -enun -offset indent
+.It
+.Sy alpha ->> beta
+trivial.
+.It
+.Sy alpha
+superkey.
+.El
+.Sy BCNF vs 4NF:
+Setiap FD adalah MVD. Jadi 4NF implies BCNF. Kalau 4NF, pasti
+BCNF. Tapi BCNF belum tentu 4NF.
+.Ss Bagian 7.3: 4NF Decomposition
+.Bd -literal -offset indent
+result := {R}
+while (ada Ri yang bukan 4NF)
+    let alpha ->> beta jadi MVD non-trivial
+    result := (result - Ri) union (Ri - beta) union (alpha, beta)
+.Ed
+.Ss Bagian 8: Normal Form Lebih Tinggi
+.Bl -tag -width "DKNF" -offset indent
+.It Sy Project-Join Normal Form (PJNF)
+Juga disebut 5NF. Generalisasi MVD ke join dependency.
+.It Sy Domain-Key Normal Form (DKNF)
+Paling general. Tapi nggak ada inference rules yang
+sound & complete. Jarang dipakai.
+.El
+.Ss Bagian 9: Design Goals
+.Sy Goal ideal:
+.Bl -enun -offset indent
+.It
+BCNF.
+.It
+Lossless join.
+.It
+Dependency preservation.
+.El
+.Sy Kenyataannya:
+Nggak selalu bisa achieve ketiganya. Kalau nggak bisa, kita
+terima salah satu:
+.Bl -bullet -offset indent
+.It
+Lack of dependency preservation (BCNF tanpa dependency preservation).
+.It
+Redundancy due to 3NF.
+.El
+.Sy Ironisnya:
+SQL nggak provide cara specify FD selain superkey. Bisa pakai
+assertions, tapi mahal dan nggak di-support database populer.
+.Ss Bagian 10: ER Model dan Normalisasi
+.Sy Kalau ER diagram didesain dengan bener,
+tabel yang dihasilkan nggak butuh normalisasi tambahan.
+.Pp
+.Sy Tapi di dunia nyata,
+desain nggak sempurna. Ada FD dari non-key attribute ke
+attribute lain. Contoh:
+.Bd -literal -offset indent
+employee(ID, name, department_name, building)
+FD: department_name -> building
+.Ed
+.Sy Solusi:
+Bikin
+.Sy department
+jadi entity. Ini yang disebut "good design".
+.Ss Bagian 11: Denormalisasi
+.Sy Kadang performance butuh schema yang nggak normal.
+Contoh: nampilin prereq bareng course butuh join.
+.Pp
+.Sy Alternatif 1:
+Denormalized relation dengan semua atribut.
+.Bl -bullet -offset indent
+.It
+Faster lookup.
+.It
+Extra space dan time buat update.
+.It
+Extra coding \(em rawan error.
+.El
+.Sy Alternatif 2:
+Materialized view.
+.Sy Benefits sama, tapi nggak butuh extra coding.
+.Ss Bagian 12: Design Issues Lain
+.Sy Contoh desain jelek yang nggak ketangkep normalisasi:
+.Bd -literal -offset indent
+earnings_2004, earnings_2005, earnings_2006, ...
+.Ed
+Atau:
+.Bd -literal -offset indent
+company_year(company_id, earnings_2004, earnings_2005, ...)
+.Ed
+Keduanya BCNF, tapi:
+.Bl -bullet -offset indent
+.It
+Query across years jadi susah.
+.It
+Butuh tabel/kolom baru tiap tahun.
+.El
+Ini contoh
+.Sy crosstab
+\(em nilai satu atribut jadi nama kolom. Sering dipakai di
+spreadsheet, tapi jelek buat database.
+.Ss Bagian 13: Temporal Data
+.Sy Temporal data
+punya asosiasi time interval di mana data valid.
+.Pp
+.Sy Snapshot
+= nilai data di titik waktu tertentu.
+.Pp
+.Sy Contoh:
+Alamat instructor berubah seiring waktu. Kalau kamu simpen
+cuma satu alamat, kamu kehilangan history. Kalau kamu simpen
+semua, kamu butuh valid time.
+.Pp
+.Sy Temporal FD:
+FD yang hold di semua snapshot.
+.Pp
+.Sy Praktek:
+Tambah atribut
+.Sy start
+dan
+.Sy end
+ke relation.
+.Bd -literal -offset indent
+course(course_id, course_title, start, end)
+.Ed
+Constraint: nggak boleh ada dua tuple dengan overlapping
+valid time. Susah dienforce efisien.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep              Inti
+Functional dep      alpha -> beta: alpha nentuin beta
+Superkey            K -> R
+Candidate key       Superkey minimal
+Trivial FD          beta subset alpha
+Closure F+          Semua FD yang tersirat
+Armstrong's axioms  Reflexivity, augmentation, transitivity
+Attribute closure   alpha+ = atribut yang ditentukan alpha
+Canonical cover     Set FD minimal
+Extraneous attr     Atribut yang bisa dihapus
+1NF                 Semua atribut atomic
+BCNF                Setiap FD, alpha harus superkey
+3NF                 BCNF plus kondisi ketiga
+MVD                 alpha ->> beta
+4NF                 4NF = BCNF + MVD
+PJNF/5NF            Generalisasi lebih lanjut
+DKNF                Paling general, jarang dipakai
+Lossless join       r = pi_R1(r) natural join pi_R2(r)
+Dependency preserve (F1 union ... union Fn)+ = F+
+Denormalisasi       Schema nggak normal buat performance
+Temporal data       Data dengan valid time
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy normalisasi itu alat diagnosis, bukan tujuan.
+Tujuannya bikin schema yang nggak redundancy dan nggak
+anomaly. Kalau schema kamu udah oke secara intuitif, belum
+tentu perlu di-normalisasi formal. Tapi kalau ada masalah
+(update anomaly, insertion anomaly), normalisasi kasih
+framework buat diagnosa dan benerin.
+.Pp
+Yang belum dijawab di sini: gimana caranya mastiin
+dekomposisi lossless secara algoritmik? Kapan pakai 3NF,
+kapan BCNF? Gimana caranya enforce FD di SQL? Itu topik
+lanjutan: chase algorithm, SQL assertions. Kalau penasaran,
+cari sendiri.
+.Sh SEE ALSO
+.Xr er-model 1 ,
+.Xr relational-model 1 ,
+.Xr database-intro 1
+.Sh AUTHORS
+.An mroczect
