@@ -1,0 +1,191 @@
+* {
+	font-family:
+		ui-monospace, "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", Menlo,
+		Consolas, monospace;
+	font-size: 14px;
+	line-height: 1.2;
+}
+
+body {
+	margin: 1rem auto;
+	padding: 0 2ch;
+	max-width: 80ch;
+	color: #000;
+	background: #fff;
+}
+
+table.head,
+table.foot {
+	width: 100%;
+	border-top: 1px solid #000;
+	border-bottom: 1px solid #000;
+	padding: 0.15em 0;
+	text-transform: uppercase;
+}
+
+table.head td,
+table.foot td {
+	padding: 0.15em 0;
+	vertical-align: baseline;
+}
+
+td.head-l,
+td.head-rtitle,
+td.foot-date,
+td.foot-os {
+	color: #000;
+}
+td.head-vol {
+	text-align: center;
+}
+td.head-rtitle {
+	text-align: right;
+}
+
+.manual-text {
+	padding: 1.2em 0;
+}
+
+h1.Sh {
+	font-size: 1em;
+	font-weight: 700;
+	text-transform: uppercase;
+	margin: 1.6em 0 0.4em;
+	padding: 0;
+	border: none;
+}
+
+h2.Ss {
+	font-size: 1em;
+	font-weight: 700;
+	margin: 1.2em 0 0.3em;
+	padding-left: 3ch;
+}
+
+p.Pp {
+	margin: 0.4em 0;
+	padding-left: 5ch;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+	font-weight: 700;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+code,
+.Li,
+.Dv,
+.Va,
+.Er,
+.Ev,
+.Ic,
+.Fl,
+.Ar,
+.Cm {
+	font-family: inherit;
+	font-size: inherit;
+	background: none;
+	padding: 0;
+}
+
+b,
+strong {
+	font-weight: 700;
+}
+i,
+em {
+	font-style: italic;
+}
+
+.Bl {
+	list-style: none;
+	padding: 0;
+	margin: 0.4em 0;
+	padding-left: 5ch;
+}
+
+.Bl > li,
+.Bl > dt,
+.Bl > dd {
+	margin: 0.2em 0;
+	padding: 0;
+}
+
+.Bl-tag > dt,
+.Bl-hang > dt {
+	font-weight: 700;
+	display: inline;
+	margin-right: 1ch;
+}
+
+.Bl-tag > dd,
+.Bl-hang > dd {
+	display: inline;
+	margin: 0;
+}
+
+.Bl-bullet > li {
+	padding-left: 3ch;
+	position: relative;
+}
+.Bl-bullet > li::before {
+	content: "o";
+	position: absolute;
+	left: 0;
+}
+
+.Bl-enum {
+	counter-reset: item;
+}
+.Bl-enum > li {
+	padding-left: 3ch;
+	position: relative;
+	counter-increment: item;
+}
+.Bl-enum > li::before {
+	content: counter(item) ".";
+	position: absolute;
+	left: 0;
+}
+
+.Bd {
+	margin: 0.4em 0;
+	padding: 0 0 0 5ch;
+	background: none;
+	border: none;
+	overflow-x: auto;
+	white-space: pre;
+	tab-size: 8;
+}
+
+.Bd-literal {
+	font-size: inherit;
+	line-height: inherit;
+}
+
+.index-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+.index-list li {
+	padding: 0.15em 0;
+	border: none;
+}
+.index-list a {
+	display: flex;
+	gap: 2ch;
+	color: #000;
+	font-weight: 400;
+	border: none;
+}
+.idx-date {
+	color: #000;
+	font-size: 1em;
+	min-width: 12ch;
+}
