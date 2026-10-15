@@ -1,0 +1,76 @@
+name: Build Man Page Blog
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mandoc and col
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mandoc bsdextrautils
+
+      - name: Build HTML
+        run: |
+          set -e
+          mkdir -p public
+          cp man.css public/man.css
+
+          for file in posts/*.1; do
+            [ -f "$file" ] || continue
+            name=$(basename "$file" .1)
+            echo "Building: $name"
+            {
+              printf '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>%s</title>\n<link rel="stylesheet" href="man.css">\n</head>\n<body>\n<pre>\n' "$name"
+              mandoc -Tascii "$file" | col -b | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+              printf '</pre>\n</body>\n</html>\n'
+            } > "public/${name}.html"
+          done
+
+          {
+            printf '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>blog</title>\n<link rel="stylesheet" href="man.css">\n</head>\n<body>\n<pre>\n'
+            printf 'BLOG POSTS\n\n'
+            for file in posts/*.1; do
+              [ -f "$file" ] || continue
+              name=$(basename "$file" .1)
+              printf '    <a href="%s.html">%s</a>\n' "$name" "$name"
+            done
+            printf '</pre>\n</body>\n</html>\n'
+          } > public/index.html
+
+          touch public/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
