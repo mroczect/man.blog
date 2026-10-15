@@ -1,0 +1,816 @@
+.Dd 2026-10-15 18:30:00
+.Dt INDEXING 1
+.Os
+.Sh NAME
+.Nm indexing
+.Nd indexing dan hashing, dari B+ tree sampai bitmap
+.Sh DESCRIPTION
+Ini catatan Chapter 11 dari buku Database System Concepts. Isinya:
+basic concepts, ordered indices, B+ tree, B tree, static hashing,
+dynamic hashing, comparison, index definition in SQL, multiple-key
+access.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+indexing itu yang bikin query cepet. Tanpa index, database
+harus scan semua baris tiap query.
+.Ss Bagian 1: Basic Concepts
+.Sy Index
+= mekanisme buat speed up access ke data.
+.Pp
+.Sy Search key
+= atribut (atau set atribut) yang dipakai buat lookup record.
+.Pp
+.Sy Index file
+= file yang berisi record (disebut index entry) dengan bentuk:
+.Bd -literal -offset indent
+search-key    pointer
+.Ed
+.Sy Index file
+biasanya jauh lebih kecil dari file aslinya.
+.Pp
+.Sy Dua jenis index:
+.Bl -tag -width "Hash indices" -offset indent
+.It Sy Ordered indices
+Search key disimpen in sorted order.
+.It Sy Hash indices
+Search key didistribusi uniformly across bucket pakai hash
+function.
+.El
+.Ss Bagian 1.1: Metrik Evaluasi
+.Bl -tag -width "Space overhead" -offset indent
+.It Sy Access types
+Records dengan nilai tertentu, atau range nilai.
+.It Sy Access time
+.It Sy Insertion time
+.It Sy Deletion time
+.It Sy Space overhead
+.El
+.Ss Bagian 2: Ordered Indices
+.Sy Index entry disimpen sorted berdasarkan search key.
+.Ss Bagian 2.1: Primary vs Secondary Index
+.Bl -tag -width "Secondary" -offset indent
+.It Sy Primary index
+Index yang search key-nya nentuin sequential order file.
+Disebut juga clustering index.
+.It Sy Secondary index
+Index yang search key-nya beda dari sequential order file.
+Disebut juga non-clustering index.
+.It Sy Index-sequential file
+Ordered sequential file dengan primary index.
+.El
+.Ss Bagian 2.2: Dense Index
+.Sy Dense index
+= index record muncul buat setiap search-key value di file.
+.Pp
+.Sy Contoh:
+Index di ID attribute.
+.Bd -literal -offset indent
+10101 --> record ID 10101
+12121 --> record ID 12121
+15151 --> record ID 15151
+...
+.Ed
+.Ss Bagian 2.3: Sparse Index
+.Sy Sparse index
+= index record cuma buat beberapa search-key value.
+.Pp
+.Sy Syarat:
+Records harus sequentially ordered di search key.
+.Pp
+.Sy Cara locate record dengan search-key K:
+.Bl -enun -offset indent
+.It
+Cari index record dengan search-key terbesar < K.
+.It
+Search file sequentially mulai dari record yang ditunjuk.
+.El
+.Ss Bagian 2.4: Dense vs Sparse
+.Bl -tag -width "Sparse" -offset indent
+.It Sy Dense
+Space lebih besar, maintenance overhead lebih besar, tapi
+locate record lebih cepet.
+.It Sy Sparse
+Space dan maintenance lebih kecil, tapi locate lebih lambat.
+.El
+.Sy Trade-off bagus:
+Sparse index dengan index entry buat setiap block di file,
+corresponding ke least search-key value di block.
+.Ss Bagian 2.5: Secondary Index
+.Sy Index record point ke bucket yang contains pointer ke semua
+actual record dengan search-key value tertentu.
+.Pp
+.Sy Secondary index harus dense.
+Karena kalau sparse, record dengan nilai tertentu bisa
+tersebar di banyak block.
+.Ss Bagian 2.6: Update Index
+.Sy Kapan file dimodif, setiap index di file harus diupdate.
+.Pp
+.Sy Sequential scan pakai primary index:
+Efficient.
+.Sy Sequential scan pakai secondary index:
+Expensive. Tiap record access mungkin fetch new block dari disk.
+Block fetch 5-10 ms vs memory access ~100 ns.
+.Ss Bagian 2.7: Multilevel Index
+.Sy Masalah:
+Kalau primary index nggak fit di memory, access jadi mahal.
+.Pp
+.Sy Solusi:
+Treat primary index sebagai sequential file, construct sparse
+index di atasnya.
+.Bl -tag -width "Inner index" -offset indent
+.It Sy Outer index
+Sparse index dari primary index.
+.It Sy Inner index
+Primary index file.
+.El
+.Sy Kalau outer index masih kekecilan:
+Buat level index lagi, dst.
+.Ss Bagian 2.8: Deletion
+.Bl -tag -width "Sparse" -offset indent
+.It Sy Dense index
+Deletion search-key similar ke file record deletion.
+.It Sy Sparse index
+Kalau entry search-key ada di index, delete dengan replace
+entry dengan next search-key value di file.
+Kalau next search-key value udah punya index entry, delete
+entry-nya instead.
+.El
+.Ss Bagian 2.9: Insertion
+.Bl -tag -width "Sparse" -offset indent
+.It Sy Dense index
+Kalau search-key value nggak muncul di index, insert.
+.It Sy Sparse index
+Kalau index stores entry per block, no change kecuali ada
+new block. Kalau new block dibuat, insert first search-key
+value di new block.
+.El
+.Ss Bagian 3: B+ Tree Index Files
+.Sy B+ tree
+= alternatif dari indexed-sequential files.
+.Pp
+.Sy Kelemahan indexed-sequential files:
+Performance degrade seiring file grows. Banyak overflow block.
+Periodic reorganization diperlukan.
+.Pp
+.Sy Keunggulan B+ tree:
+Automatically reorganize dengan small, local changes.
+Reorganization of entire file nggak perlu.
+.Pp
+.Sy Kelemahan B+ tree:
+Extra insertion dan deletion overhead, space overhead.
+.Sy Tapi advantages outweigh disadvantages.
+B+ tree extensively used.
+.Ss Bagian 3.1: Properti B+ Tree
+.Bl -bullet -offset indent
+.It
+Semua path dari root ke leaf sama panjang.
+.It
+Node non-root non-leaf punya antara
+.Sy ceil(n/2)
+dan
+.Sy n
+children.
+.It
+Leaf node punya antara
+.Sy ceil((n-1)/2)
+dan
+.Sy n-1
+values.
+.It
+Kalau root bukan leaf, punya minimal 2 children.
+.It
+Kalau root leaf, punya antara 0 dan n-1 values.
+.El
+.Ss Bagian 3.2: Typical Node
+.Bd -literal -offset indent
+P1  K1  P2  K2  ...  Pn-1  Kn-1  Pn
+.Ed
+.Sy K
+= search key values.
+.Sy P
+= pointer ke children (non-leaf) atau pointer ke record/
+bucket (leaf).
+.Pp
+.Sy Search keys in a node are ordered:
+.Bd -literal -offset indent
+K1 < K2 < K3 < ... < Kn-1
+.Ed
+.Ss Bagian 3.3: Leaf Node
+.Bl -bullet -offset indent
+.It
+Pointer Pi point ke file record dengan search-key Ki.
+.It
+Kalau Li dan Lj leaf nodes dan i < j, search-key values
+di Li <= di Lj.
+.It
+Pn point ke next leaf node in search-key order.
+.El
+.Ss Bagian 3.4: Non-Leaf Node
+.Sy Form a multi-level sparse index on leaf nodes.
+.Pp
+.Sy Untuk non-leaf node dengan m pointer:
+.Bl -bullet -offset indent
+.It
+Semua search-key di subtree P1 < K1.
+.It
+Untuk 2 <= i <= n-1, semua search-key di subtree Pi >= Ki-1
+dan < Ki.
+.It
+Semua search-key di subtree Pn >= Kn-1.
+.El
+.Ss Bagian 3.5: Contoh B+ Tree
+.Bd -literal -offset indent
+                 [El Said | Mozart]
+                /        |        \
+               /         |         \
+    [Brandt|Califieri|  [El Said|Gold|  [Mozart|Singh|
+     Crick|Einstein]     Katz|Kim]       Srinivasan|Wu]
+.Ed
+.Sy n = 6:
+Leaf nodes: 3-5 values. Non-leaf: 3-6 children. Root: >= 2 children.
+.Ss Bagian 3.6: Kenapa B+ Tree Cepet
+.Sy Jumlah level:
+B+ tree contains relatively small number of levels.
+.Sy Contoh:
+1 juta search key value, n = 100 \(-> height <= log_50(1,000,000) = 4.
+Compare dengan binary tree: ~20 node access.
+.Pp
+.Sy Kenapa penting?
+Karena setiap node access butuh disk I/O, ~20 ms.
+.Ss Bagian 3.7: Insertion
+.Sy Algoritma:
+.Bl -enun -offset indent
+.It
+Cari leaf node di mana search-key value bakal muncul.
+.It
+Kalau search-key value udah ada:
+.Bl -enun -offset indent
+.It
+Add record ke file.
+.It
+Kalau perlu, add pointer ke bucket.
+.El
+.It
+Kalau search-key value belum ada:
+.Bl -enun -offset indent
+.It
+Add record ke main file (bikin bucket kalau perlu).
+.It
+Kalau ada room di leaf, insert (key, pointer) pair.
+.It
+Kalau nggak, split node.
+.El
+.El
+.Ss Bagian 3.8: Splitting Leaf Node
+.Bl -enun -offset indent
+.It
+Ambil n (key, pointer) pairs (termasuk yang baru) in sorted order.
+.It
+Place first ceil(n/2) di original node, sisanya di new node.
+.It
+Insert (k, p) di parent node.
+.It
+Kalau parent full, split dan propagate up.
+.El
+.Sy Worst case:
+Root node split, height naik 1.
+.Ss Bagian 3.9: Splitting Non-Leaf Node
+.Bl -enun -offset indent
+.It
+Copy N ke memory area M dengan space n+1 pointer dan n keys.
+.It
+Insert (k, p) ke M.
+.It
+Copy P1, K1, ..., K_[n/2]-1, P_[n/2] dari M back ke node N.
+.It
+Copy P_[n/2+1], ..., Pn+1 dari M ke new node N'.
+.It
+Insert (K_[n/2], N') ke parent N.
+.El
+.Ss Bagian 3.10: Deletion
+.Sy Algoritma:
+.Bl -enun -offset indent
+.It
+Cari record yang di-delete, remove dari main file dan bucket.
+.It
+Remove (search-key value, pointer) dari leaf node.
+.It
+Kalau node terlalu sedikit entries dan entries di node +
+sibling fit di single node, merge siblings:
+.Bl -enun -offset indent
+.It
+Insert semua search-key value di dua node ke single node
+(yang kiri), delete node lain.
+.It
+Delete pair (Ki-1, Pi) dari parent, recursively.
+.El
+.It
+Kalau nggak bisa merge, redistribute pointers:
+.Bl -enun -offset indent
+.It
+Redistribute pointer antara node dan sibling.
+.It
+Update corresponding search-key value di parent.
+.El
+.El
+.Sy Cascade:
+Node deletions bisa cascade upwards sampai node dengan
+.Sy ceil(n/2)
+atau lebih pointer ditemukan.
+.Pp
+.Sy Root node:
+Kalau root cuma punya 1 pointer setelah deletion, delete dan
+sole child jadi root.
+.Ss Bagian 3.11: Duplicate Search Keys
+.Sy Masalah:
+Kalau ada duplicate search key, nggak bisa guarantee
+K1 < K2 < ... < Kn-1.
+Tapi bisa guarantee K1 <= K2 <= ... <= Kn-1.
+.Pp
+.Sy Handling:
+Traverse Pi even if V = Ki. As soon as reach leaf C, check
+if C punya search key values less than V. Kalau iya, set
+C = right sibling. Traverse consecutive leaves buat temuin
+all occurrences.
+.Ss Bagian 3.12: B+ Tree File Organization
+.Sy Data file degradation problem
+solved dengan B+ tree file organization.
+.Pp
+.Sy Leaf nodes
+simpen records, bukan pointers.
+.Pp
+.Sy Kelemahan:
+Records lebih besar dari pointers. Max records per leaf node
+lebih sedikit dari max pointers di non-leaf node.
+.Pp
+.Sy Space utilization:
+Good space utilization penting. Involve more sibling nodes
+in redistribution during splits/merges.
+.Ss Bagian 4: B Tree Index Files
+.Sy B tree
+= similar ke B+ tree, tapi search key values muncul hanya
+sekali. Eliminate redundant storage.
+.Pp
+.Sy Non-leaf nodes:
+Search key muncul nowhere else. Additional pointer field
+buat each search key.
+.Bd -literal -offset indent
+P1  B1  K1  P2  B2  K2  ...  Pm-1  Bm-1  Km-1  Pm
+.Ed
+.Sy Bi
+= bucket atau file record pointer.
+.Ss Bagian 4.1: B Tree vs B+ Tree
+.Bl -tag -width "Kelebihan B Tree" -offset indent
+.It Sy Kelebihan B Tree
+May use fewer tree nodes. Sometimes find search-key value
+before reaching leaf node.
+.It Sy Kelemahan B Tree
+Only small fraction search-key values found early. Non-leaf
+nodes larger, fan-out reduced. Typically greater depth.
+Insertion/deletion more complicated. Implementation harder.
+.El
+.Sy Kesimpulan:
+Typically, advantages of B Tree nggak outweigh disadvantages.
+.Ss Bagian 5: Hashing
+.Ss Bagian 5.1: Bucket
+.Sy Bucket
+= unit of storage containing one or more records
+(typically a disk block).
+.Pp
+.Sy Hash file organization:
+Bucket of record didapat langsung dari search-key value pakai
+hash function.
+.Pp
+.Sy Hash function h:
+Fungsi dari set search-key values K ke set bucket addresses B.
+.Pp
+.Sy Kenapa perlu hash?
+Buat locate record cepet, insertion, deletion. Records dengan
+search-key value berbeda bisa map ke bucket yang sama,
+jadi bucket harus di-search sequentially.
+.Ss Bagian 5.2: Hash Function
+.Sy Worst hash function:
+Map semua search-key values ke bucket yang sama.
+.Sy Ideal hash function:
+Uniform (setiap bucket punya jumlah search-key value sama)
+dan random.
+.Ss Bagian 5.3: Bucket Overflow
+.Sy Penyebab:
+.Bl -bullet -offset indent
+.It
+Insufficient buckets.
+.It
+Skew in distribution of records.
+.Bl -bullet -offset indent
+.It
+Multiple records punya same search-key value.
+.It
+Chosen hash function produces non-uniform distribution.
+.El
+.El
+.Sy Handling:
+.Bl -tag -width "Open hashing" -offset indent
+.It Sy Overflow chaining (closed hashing)
+Overflow buckets dari given bucket di-chain in linked list.
+.It Sy Open hashing
+Nggak pakai overflow buckets. Nggak suitable buat database.
+.El
+.Ss Bagian 5.4: Hash Indices
+.Sy Hash index
+= organize search keys dengan associated record pointers ke
+hash file structure.
+.Pp
+.Sy Strictly speaking:
+Hash indices are always secondary indices.
+.Sy Kalau file itself organized using hashing:
+Separate primary hash index nggak perlu.
+.Ss Bagian 6: Static Hashing
+.Sy Static hashing:
+Hash function h map search-key values ke fixed set B of
+bucket addresses.
+.Pp
+.Sy Masalah:
+Database grow atau shrink seiring waktu.
+.Bl -bullet -offset indent
+.It
+Kalau initial number of buckets kekecilan dan file grows,
+performance degrade karena too much overflows.
+.It
+Kalau space dialokasi buat anticipated growth, significant
+amount of space wasted initially.
+.It
+Kalau database shrinks, space wasted lagi.
+.El
+.Sy Solusi:
+Periodic reorganization dengan new hash function. Expensive,
+disrupts operations.
+.Sy Better solution:
+Allow number of buckets dimodif dynamically.
+.Ss Bagian 7: Dynamic Hashing
+.Sy Good for database yang grows and shrinks.
+.Ss Bagian 7.1: Extendable Hashing
+.Sy Ide:
+.Bl -bullet -offset indent
+.It
+Hash function generates values over large range (b-bit, b=32).
+.It
+At any time, use only prefix dari hash function buat index
+ke bucket address table.
+.It
+Length of prefix = i bit, 0 <= i <= 32.
+.It
+Bucket address table size = 2^i.
+.It
+i grows and shrinks as database grows and shrinks.
+.It
+Multiple entries di bucket address table bisa point ke bucket
+yang sama.
+.It
+Actual number of buckets < 2^i.
+.El
+.Ss Bagian 7.2: Operasi Extendable Hashing
+.Sy Setiap bucket j stores value ij:
+Semua entries yang point ke bucket sama punya value sama
+di first ij bits.
+.Pp
+.Sy Locate bucket containing search-key Kj:
+.Bl -enun -offset indent
+.It
+Compute h(Kj) = X.
+.It
+Use first i high order bits of X as displacement ke bucket
+address table.
+.It
+Follow pointer ke appropriate bucket.
+.El
+.Ss Bagian 7.3: Insertion Extendable Hashing
+.Sy Algoritma:
+.Bl -enun -offset indent
+.It
+Follow same procedure as lookup, locate bucket j.
+.It
+Kalau ada room, insert record.
+.It
+Kalau nggak, split bucket dan insertion re-attempted.
+.El
+.Sy Split bucket j:
+.Bl -tag -width "i = ij" -offset indent
+.It Sy Kalau i > ij (lebih dari satu pointer ke bucket j):
+.Bl -enun -offset indent
+.It
+Allocate new bucket z, set ij = iz = (ij + 1).
+.It
+Update second half of bucket address table entries original
+pointing ke j, point ke z.
+.It
+Remove each record dari bucket j, reinsert (di j atau z).
+.It
+Recompute new bucket for Kj dan insert.
+.El
+.It Sy Kalau i = ij (cuma satu pointer ke bucket j):
+.Bl -enun -offset indent
+.It
+Kalau i reaches limit b atau too many splits, create overflow
+bucket.
+.It
+Else, increment i dan double size of bucket address table.
+.It
+Replace each entry dengan dua entry yang point ke bucket
+yang sama.
+.It
+Recompute new bucket address table entry for Kj.
+.It
+Now i > ij, use first case.
+.El
+.El
+.Ss Bagian 7.4: Deletion Extendable Hashing
+.Sy Algoritma:
+.Bl -enun -offset indent
+.It
+Locate key di bucket, remove.
+.It
+Bucket bisa di-remove kalau empty.
+.It
+Coalescing of buckets bisa dilakukan (cuma dengan "buddy"
+bucket having same ij dan same ij-1 prefix).
+.It
+Decreasing bucket address table size juga possible.
+.Sy Note:
+Decreasing bucket address table size expensive, lakukan
+cuma kalau number of buckets much smaller than table size.
+.El
+.Ss Bagian 7.5: Benefit dan Disadvantage
+.Bl -tag -width "Disadvantages" -offset indent
+.It Sy Benefits
+Hash performance nggak degrade dengan growth of file.
+Minimal space overhead.
+.It Sy Disadvantages
+Extra level of indirection.
+Bucket address table may become very big.
+Cannot allocate very large contiguous areas on disk.
+Changing size of bucket address table expensive.
+.El
+.Sy Alternative:
+Linear hashing. Allows incremental growth of directory.
+At cost of more bucket overflows.
+.Ss Bagian 8: Comparison Ordered Index vs Hashing
+.Sy Faktor:
+.Bl -bullet -offset indent
+.It
+Cost of periodic reorganization.
+.It
+Relative frequency of insertions and deletions.
+.It
+Expected type of queries.
+.El
+.Sy Hashing lebih baik buat:
+Retrieve records dengan specified value.
+.Sy Ordered indices lebih baik buat:
+Range queries.
+.Ss Bagian 8.1: Prakteknya
+.Bl -bullet -offset indent
+.It
+PostgreSQL supports hash indices, but discourages use due to
+poor performance.
+.It
+Oracle supports static hash organization, but not hash indices.
+.It
+SQLServer supports only B+ trees.
+.El
+.Ss Bagian 9: Bitmap Indices
+.Sy Bitmap index
+= special type of index designed buat efficient querying on
+multiple keys.
+.Pp
+.Sy Records
+in a relation diasumsikan numbered sequentially.
+.Pp
+.Sy Applicable
+on attributes yang take relatively small number distinct values.
+Contoh: gender, country, state, income-level.
+.Pp
+.Sy Bitmap
+= array of bits.
+.Ss Bagian 9.1: Cara Kerja
+.Sy Bitmap index on attribute punya bitmap buat setiap value
+dari attribute.
+.Bd -literal -offset indent
+record  ID      gender  income_level
+0       76766   m       L1
+1       22222   f       L2
+2       12121   f       L1
+3       15151   m       L4
+4       58583   f       L3
+
+Bitmaps for gender:
+  m:  10010
+  f:  01101
+
+Bitmaps for income_level:
+  L1: 10100
+  L2: 01000
+  L3: 00001
+  L4: 00010
+.Ed
+.Ss Bagian 9.2: Bitmap Operations
+.Sy Queries
+answered using bitmap operations:
+.Bl -bullet -offset indent
+.It
+Intersection (AND)
+.It
+Union (OR)
+.It
+Complementation (NOT)
+.El
+.Sy Contoh:
+Males with income level L1:
+.Bd -literal -offset indent
+10010 AND 10100 = 10000
+.Ed
+.Sy Counting matching tuples
+even faster.
+.Ss Bagian 9.3: Space Efficiency
+.Sy Bitmap indices
+generally very small compared with relation size.
+.Pp
+.Sy Contoh:
+Kalau record 100 byte, space buat single bitmap 1/800 of
+relation space.
+Kalau number of distinct attribute values 8, bitmap cuma 1%
+of relation size.
+.Ss Bagian 9.4: Deletion Handling
+.Sy Existence bitmap:
+Note if there is valid record at record location.
+Needed for complementation.
+.Bd -literal -offset indent
+not(A=v): (NOT bitmap_A_v) AND ExistenceBitmap
+.Ed
+.Sy SQL null semantics:
+Keep bitmaps buat all values, even null.
+.Bd -literal -offset indent
+NOT(A=v): intersect above result with
+           (NOT bitmap_A_Null)
+.Ed
+.Ss Bagian 9.5: Optimisasi Bitmap
+.Sy Bitmaps are packed into words:
+Single word and (basic CPU instruction) computes AND of
+32 atau 64 bits at once.
+.Pp
+.Sy Contoh:
+1 million-bit maps bisa di-AND dengan cuma 31,250 instruction.
+.Pp
+.Sy Counting 1s:
+Use each byte to index into precomputed array of 256 elements
+storing count of 1s.
+.Ss Bagian 9.6: Bitmap di B+ Tree
+.Sy Bitmaps bisa dipakai instead of Tuple-ID lists
+at leaf levels of B+ trees, buat values dengan large number
+of matching records.
+.Pp
+.Sy Worthwhile
+kalau >1/64 dari records punya value itu (assuming tuple-id
+64 bits).
+.Ss Bagian 10: Index Definition in SQL
+.Sy Create index:
+.Bd -literal -offset indent
+create index <index-name> on <relation-name> (<attribute-list>)
+.Ed
+.Sy Contoh:
+.Bd -literal -offset indent
+create index b-index on branch(branch_name)
+.Ed
+.Sy Create unique index:
+Indirectly specify dan enforce condition bahwa search key
+adalah candidate key.
+Nggak really required kalau SQL unique integrity constraint
+supported.
+.Sy Drop index:
+.Bd -literal -offset indent
+drop index <index-name>
+.Ed
+.Sy Most database systems
+allow specification of type of index dan clustering.
+.Ss Bagian 11: Multiple-Key Access
+.Sy Use multiple indices
+buat certain types of queries.
+.Bd -literal -offset indent
+select ID from instructor
+where dept_name = "Finance" and salary = 80000
+.Ed
+.Sy Strategi:
+.Bl -enun -offset indent
+.It
+Use index on dept_name, test salary = 80000.
+.It
+Use index on salary, test dept_name = "Finance".
+.It
+Use both, intersect pointer sets.
+.El
+.Ss Bagian 11.1: Composite Search Key
+.Sy Composite search key
+= search key containing more than one attribute.
+Contoh: (dept_name, salary).
+.Pp
+.Sy Lexicographic ordering:
+(a1, a2) < (b1, b2) kalau a1 < b1, atau a1 = b1 dan a2 < b2.
+.Ss Bagian 11.2: Index on Multiple Attributes
+.Sy Contoh:
+Index on (dept_name, salary).
+.Bd -literal -offset indent
+where dept_name = "Finance" and salary = 80000
+.Ed
+Index bisa dipakai buat fetch cuma records yang satisfy
+kedua conditions.
+.Pp
+.Sy Separate indices less efficient:
+May fetch many records yang satisfy cuma satu condition.
+.Pp
+.Sy Bisa handle:
+.Bd -literal -offset indent
+where dept_name = "Finance" and salary < 80000
+.Ed
+.Sy Nggak bisa handle:
+.Bd -literal -offset indent
+where dept_name < "Finance" and balance = 80000
+.Ed
+.Ss Bagian 11.3: Covering Index
+.Sy Covering index:
+Tambah extra attributes ke index biar query bisa avoid
+fetching actual records.
+.Pp
+.Sy Berguna buat:
+Secondary indices.
+.Sy Bisa store extra attributes hanya di leaf.
+.Ss Bagian 11.4: Hash Values untuk Multiple Attributes
+.Sy Hash values split into segments
+yang depend ke each attribute of search-key.
+.Pp
+.Sy Contoh:
+n = 2, search-key = (customer-street, customer-city).
+.Bd -literal -offset indent
+(Main, Harrison)   -> 101 111
+(Main, Brooklyn)   -> 101 001
+(Park, Palo Alto)  -> 010 010
+(Spring, Brooklyn) -> 001 001
+(Alma, Palo Alto)  -> 110 010
+.Ed
+.Sy Equality query on single attribute:
+Lookup multiple buckets.
+.Ss Bagian 11.5: Grid Files
+.Sy Struktur
+buat speed up processing general multiple search-key queries
+involving one or more comparison operators.
+.Pp
+.Sy Grid file:
+Single grid array dan satu linear scale buat each search-key
+attribute.
+.Pp
+.Sy Multiple cells
+of grid array bisa point ke same bucket.
+.Pp
+.Sy Handling queries:
+Bisa handle (a1 <= A <= a2), (b1 <= B <= b2), dan kombinasi
+keduanya.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                Inti
+Index                 Speed up access
+Search key            Attribute buat lookup
+Index entry           (search-key, pointer)
+Ordered index         Search key sorted
+Hash index            Hash function
+Primary index         Search key = sequential order
+Secondary index       Search key != sequential order
+Dense index           Entry buat setiap value
+Sparse index          Entry buat beberapa value
+Multilevel index      Index di atas index
+B+ tree               Balanced tree, search key di leaf
+B tree                Search key muncul sekali
+Bucket                Unit storage
+Hash function         Map key ke bucket
+Overflow chaining     Chain overflow bucket
+Static hashing        Fixed number buckets
+Extendable hashing    Dynamic number buckets
+Bitmap index          Array of bits
+Composite search key  Multiple attributes
+Covering index        Index dengan extra attributes
+Grid file             Multi-dimensional index
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy index itu trade-off antara space dan speed.
+Setiap index bikin query cepet, tapi bikin insert/update/
+delete lambat (karena harus update index juga) dan makan
+space. Jangan bikin index buat semua kolom. Cuma bikin index
+buat kolom yang sering di-query atau di-join.
+.Pp
+Yang belum dijawab di sini: gimana caranya database milih
+index mana yang dipakai buat query tertentu? Kapan pakai
+B+ tree, kapan pakai hash? Itu topik lanjutan: query
+optimizer dan cost estimation. Kalau penasaran, cari sendiri.
+.Sh SEE ALSO
+.Xr storage 1 ,
+.Xr sql-intro 1 ,
+.Xr relational-model 1
+.Sh AUTHORS
+.An mroczect
