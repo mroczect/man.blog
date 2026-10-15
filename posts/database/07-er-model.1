@@ -1,0 +1,642 @@
+.Dd 2026-10-15 16:30:00
+.Dt ER-MODEL 1
+.Os
+.Sh NAME
+.Nm er-model
+.Nd entity-relationship model, dari desain sampai ke tabel
+.Sh DESCRIPTION
+Ini catatan Chapter 7 dari buku Database System Concepts. Isinya:
+ER model, entity, relationship, cardinality, weak entity set,
+ER diagram, reduction ke relation schema, extended features, dan
+perbandingan dengan UML.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena ER
+model itu alat desain. Kalau kamu paham kenapa tiap simbol
+ada, kamu bisa desain database yang bener.
+.Ss Bagian 1: Fase Desain Database
+.Sy Fase 1:
+Characterize data needs dari user. Apa aja yang perlu disimpen.
+.Pp
+.Sy Fase 2:
+Pilih data model, terjemahin requirement jadi
+.Sy conceptual schema .
+Conceptual schema yang lengkap juga nyertain
+.Sy functional requirements
+\(em operasi atau transaction apa aja yang bakal dijalanin.
+.Pp
+.Sy Fase 3: Logical Design
+Nentuin database schema. Cari "good" collection of relation
+schemas. Ada dua keputusan:
+.Bl -tag -width "CS decision" -offset indent
+.It Sy Business decision
+Atribut apa yang perlu direkam.
+.It Sy CS decision
+Relation schema apa yang perlu ada, dan gimana distribusi
+atributnya.
+.El
+.Sy Fase 4: Physical Design
+Nentuin layout fisik di disk.
+.Ss Bagian 2: ER Model Itu Apa?
+.Sy ER model
+dikembangkan buat memfasilitasi desain database dengan cara
+memungkinkan spesifikasi
+.Sy enterprise schema
+yang merepresentasi struktur logis database.
+.Pp
+.Sy Kenapa ER model berguna?
+Karena dia map meaning dan interaction dari real-world enterprise
+ke conceptual schema. Karena itu, banyak tools desain database
+pakai konsep dari ER model.
+.Pp
+.Sy Tiga konsep dasar:
+.Bl -enun -offset indent
+.It
+.Sy Entity sets
+.It
+.Sy Relationship sets
+.It
+.Sy Attributes
+.El
+Plus
+.Sy ER diagram
+\(em representasi grafis dari struktur logis database.
+.Ss Bagian 3: Entity dan Entity Set
+.Sy Entity
+= object yang exist dan bisa dibedain dari object lain.
+Contoh: orang spesifik, perusahaan, event, tanaman.
+.Pp
+.Sy Entity set
+= set of entities dengan tipe sama yang share properties.
+Contoh: set semua orang, set semua perusahaan, set semua pohon.
+.Pp
+.Sy Setiap entity
+direpresentasi oleh
+.Sy set of attributes
+\(em descriptive properties yang dimiliki semua anggota entity
+set.
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+instructor = (ID, name, street, city, salary)
+course     = (course_id, title, credits)
+.Ed
+.Sy Subset dari attributes
+membentuk
+.Sy primary key
+dari entity set \(em yang uniquely identify tiap member.
+.Ss Bagian 4: Relationship dan Relationship Set
+.Sy Relationship
+= association among several entities.
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+44553 (Peltier)  advisor  22222 (Einstein)
+     student       relation       instructor
+.Ed
+.Sy Relationship set
+= mathematical relation among
+.Sy n >= 2
+entities, masing-masing dari entity set:
+.Bd -literal -offset indent
+{ (e1, e2, ..., en) | e1 in E1, e2 in E2, ..., en in En }
+.Ed
+.Sy Contoh:
+.Bd -literal -offset indent
+(44553, 22222) element advisor
+.Ed
+.Ss Bagian 4.1: Attribute di Relationship Set
+.Sy Atribut bisa juga diasosiasikan ke relationship set.
+.Pp
+.Sy Contoh:
+Relationship
+.Sy advisor
+antara
+.Sy instructor
+dan
+.Sy student
+punya atribut
+.Sy date
+yang track kapan student mulai diasosiasiin ke advisor.
+.Ss Bagian 4.2: Binary vs Non-Binary
+.Sy Binary relationship
+= involve dua entity set (degree two). Kebanyakan relationship
+di database itu binary.
+.Pp
+.Sy Non-binary relationship
+= involve lebih dari dua entity set. Jarang.
+.Pp
+.Sy Contoh ternary:
+Student kerja di research project di bawah bimbingan instructor.
+Relationship
+.Sy proj_guide
+adalah ternary antara
+.Sy instructor ,
+.Sy student ,
+dan
+.Sy project .
+.Ss Bagian 5: Mapping Cardinality
+.Sy Mapping cardinality
+= jumlah entity yang bisa diasosiasiin ke entity lain via
+relationship set.
+.Pp
+.Sy Paling berguna buat binary relationship set.
+Ada empat tipe:
+.Bl -tag -width "Many-to-many" -offset indent
+.It Sy One-to-one
+Satu entity di A diasosiasiin paling banyak satu entity di B,
+dan sebaliknya.
+.It Sy One-to-many
+Satu entity di A bisa diasosiasiin banyak entity di B, tapi
+entity di B paling banyak satu entity di A.
+.It Sy Many-to-one
+Kebalikannya.
+.It Sy Many-to-many
+Banyak entity di A bisa diasosiasiin banyak entity di B.
+.El
+.Sy Catatan:
+Beberapa element di A dan B mungkin nggak ke-map ke element lain.
+.Ss Bagian 6: Attribute Types
+.Bl -tag -width "Derived" -offset indent
+.It Sy Simple
+Atribut tunggal. Contoh:
+.Sy ID .
+.It Sy Composite
+Atribut yang terdiri dari beberapa sub-atribut.
+Contoh:
+.Sy name
+terdiri dari
+.Sy first_name ,
+.Sy middle_initial ,
+.Sy last_name .
+.It Sy Single-valued
+Satu nilai per entity. Contoh:
+.Sy ID .
+.It Sy Multivalued
+Banyak nilai per entity. Contoh:
+.Sy phone_numbers .
+.It Sy Derived
+Bisa dihitung dari atribut lain. Contoh:
+.Sy age
+dari
+.Sy date_of_birth .
+.El
+.Sy Domain
+= set of permitted values buat tiap atribut.
+.Ss Bagian 7: Redundansi Atribut
+.Sy Contoh:
+.Bd -literal -offset indent
+instructor = (ID, name, dept_name, salary)
+department = (dept_name, building, budget)
+.Ed
+.Sy Kita modelkan
+fakta bahwa tiap instructor punya department pake relationship
+set
+.Sy inst_dept .
+.Pp
+.Sy Masalah:
+Atribut
+.Sy dept_name
+muncul di kedua entity set. Karena
+.Sy dept_name
+adalah primary key dari
+.Sy department ,
+dia
+.Sy redundan
+di
+.Sy instructor .
+.Pp
+.Sy Solusi:
+Hapus
+.Sy dept_name
+dari
+.Sy instructor .
+Tapi pas convert balik ke tabel, kadang atribut ini muncul lagi.
+Nanti kita lihat kenapa.
+.Ss Bagian 8: Weak Entity Sets
+.Sy Contoh:
+Entity
+.Sy section
+yang di-identifikasi oleh
+.Sy course_id ,
+.Sy semester ,
+.Sy year ,
+dan
+.Sy sec_id .
+.Pp
+.Sy Section
+related ke
+.Sy course .
+Kita bisa bikin relationship set
+.Sy sec_course
+antara
+.Sy section
+dan
+.Sy course .
+.Pp
+.Sy Masalah:
+Informasi di
+.Sy sec_course
+redundan, karena
+.Sy section
+udah punya atribut
+.Sy course_id .
+.Pp
+.Sy Solusi 1:
+Hapus relationship
+.Sy sec_course .
+Tapi ini bikin relationship antara section dan course jadi
+implicit di atribut, yang nggak diinginkan.
+.Pp
+.Sy Solusi 2:
+Jangan simpen
+.Sy course_id
+di entity
+.Sy section .
+Cuma simpen
+.Sy sec_id ,
+.Sy year ,
+.Sy semester .
+Tapi entity
+.Sy section
+jadi nggak punya cukup atribut buat identify entity unik.
+.Pp
+.Sy Solusi 3 (yang bener):
+Perlakukan
+.Sy sec_course
+sebagai special relationship yang provide extra info (course_id)
+yang dibutuhin buat identify section entity unik.
+.Pp
+.Sy Konsep weak entity set
+memformalkan intuisi di atas:
+.Bl -tag -width "Identifying entity" -offset indent
+.It Sy Weak entity set
+Entity set yang existensinya dependent ke entity lain.
+.It Sy Identifying entity
+Entity yang jadi tempat dependent weak entity.
+.It Sy Discriminator
+Atribut tambahan selain identifying entity yang dipakai buat
+identify weak entity unik.
+.It Sy Strong entity set
+Entity set yang bukan weak.
+.El
+.Sy Setiap weak entity
+harus diasosiasiin ke identifying entity.
+Weak entity set disebut
+.Sy existence dependent
+ke identifying entity set.
+.Pp
+.Sy Identifying entity set
+dikatakan
+.Sy own
+weak entity set yang dia identify. Relationship yang
+mengasosiasikan mereka disebut
+.Sy identifying relationship .
+.Ss Bagian 9: ER Diagram
+.Sy Simbol-simbol:
+.Bl -tag -width "Persegi panjang" -offset indent
+.It Sy Persegi panjang
+Entity set. Atribut di-list di dalam. Primary key di-underline.
+.It Sy Belah ketupat
+Relationship set.
+.It Sy Elips
+Atribut.
+.It Sy Elips double
+Multivalued attribute.
+.It Sy Elips dashed
+Derived attribute.
+.It Sy Belah ketupat double
+Identifying relationship set untuk weak entity set.
+.It Sy Persegi panjang double
+Weak entity set.
+.It Sy Garis double
+Total participation.
+.It Sy Garis dengan panah
+Cardinality constraint.
+.El
+.Ss Bagian 9.1: Contoh ER Diagram
+.Bd -literal -offset indent
++-------------+        <>          +-----------+
+| instructor  |------< advisor >------| student   |
++-------------+        <>          +-----------+
+| ID          |                    | ID        |
+| name        |                    | name      |
+| salary      |                    | tot_cred  |
++-------------+                    +-----------+
+.Ed
+.Sy Artinya:
+Instructor dan student punya relationship
+.Sy advisor .
+.Ss Bagian 9.2: Cardinality di Diagram
+.Sy One-to-one:
+Garis dengan panah di kedua sisi.
+.Bd -literal -offset indent
+instructor <--- advisor ---> student
+.Ed
+.Sy One-to-many:
+Garis dengan panah di satu sisi aja.
+.Bd -literal -offset indent
+instructor <--- advisor ---- student
+.Ed
+.Sy Many-to-many:
+Garis tanpa panah.
+.Bd -literal -offset indent
+instructor ---- advisor ---- student
+.Ed
+.Ss Bagian 9.3: Total vs Partial Participation
+.Bl -tag -width "Total" -offset indent
+.It Sy Total participation
+Garis double. Setiap entity di entity set participate di minimal
+satu relationship.
+.It Sy Partial participation
+Garis biasa. Beberapa entity mungkin nggak participate.
+.El
+.Sy Contoh:
+Partisipasi student di
+.Sy advisor
+total. Artinya setiap student harus punya advisor.
+Partisipasi instructor partial. Artinya nggak semua instructor
+harus jadi advisor.
+.Ss Bagian 9.4: Cardinality Limits
+.Sy Garis bisa punya min dan max cardinality:
+.Sy l..h .
+.Bl -bullet -offset indent
+.It
+Min 1 = total participation.
+.It
+Max 1 = entity participate di paling banyak satu relationship.
+.It
+Max * = no limit.
+.El
+.Sy Contoh:
+.Bd -literal -offset indent
+instructor ---- 0..* ---- advisor ---- 1..1 ---- student
+.Ed
+.Sy Artinya:
+Instructor bisa advise 0 atau lebih student. Student harus punya
+1 advisor, nggak boleh lebih.
+.Ss Bagian 10: Reduction ke Relation Schema
+.Sy Entity set dan relationship set
+bisa di-express uniform sebagai relation schema yang represent
+isi database.
+.Pp
+.Sy Setiap entity set dan relationship set
+punya unique schema dengan nama yang sama.
+.Ss Bagian 10.1: Strong Entity Set
+.Bd -literal -offset indent
+student(ID, name, tot_cred)
+.Ed
+Reduces to schema dengan atribut yang sama.
+.Ss Bagian 10.2: Weak Entity Set
+.Bd -literal -offset indent
+section(course_id, sec_id, semester, year)
+.Ed
+Jadi table yang include column untuk primary key dari
+identifying strong entity set.
+.Ss Bagian 10.3: Many-to-Many Relationship
+.Bd -literal -offset indent
+advisor(s_id, i_id)
+.Ed
+Represented as schema dengan atribut untuk primary key dari
+dua entity set, plus descriptive attribute dari relationship.
+.Ss Bagian 10.4: Composite Attribute
+.Sy Flattened
+dengan bikin separate attribute untuk tiap component.
+.Pp
+.Sy Contoh:
+Entity set
+.Sy instructor
+punya composite attribute
+.Sy name
+dengan component
+.Sy first_name
+dan
+.Sy last_name .
+Schema-nya punya:
+.Bd -literal -offset indent
+name_first_name, name_last_name
+.Ed
+Prefix bisa dihilangin kalau nggak ambigu.
+.Ss Bagian 10.5: Multivalued Attribute
+.Sy Multivalued attribute M
+dari entity
+.Sy E
+direpresentasi oleh separate schema
+.Sy EM .
+.Pp
+.Sy Schema EM
+punya atribut yang corresponde ke primary key
+.Sy E
+dan atribut yang corresponde ke
+.Sy M .
+.Pp
+.Sy Contoh:
+Multivalued attribute
+.Sy phone_number
+dari
+.Sy instructor
+direpresentasi oleh:
+.Bd -literal -offset indent
+inst_phone = (ID, phone_number)
+.Ed
+.Sy Setiap nilai
+dari multivalued attribute map ke separate tuple.
+.Ss Bagian 10.6: Many-to-One dan One-to-Many
+.Sy Relationship set
+yang total di many-side bisa direpresentasi dengan nambah
+extra attribute di many-side, isinya primary key dari one-side.
+.Pp
+.Sy Contoh:
+Daripada bikin schema buat relationship set
+.Sy inst_dept ,
+tambahin atribut
+.Sy dept_name
+ke schema dari entity set
+.Sy instructor .
+.Ss Bagian 10.7: One-to-One
+.Sy Either side
+bisa dipilih jadi "many" side. Extra attribute bisa ditambahin
+ke salah satu tabel.
+.Pp
+.Sy Kalau participation partial
+di many-side, replace schema dengan extra attribute bisa
+menghasilkan null values.
+.Ss Bagian 10.8: Weak Entity Set Relationship
+.Sy Schema
+yang corresponde ke relationship set yang link weak entity
+set ke identifying strong entity set itu
+.Sy redundant .
+.Pp
+.Sy Contoh:
+Schema
+.Sy section
+udah contain atribut yang bakal muncul di schema
+.Sy sec_course .
+.Ss Bagian 11: Extended ER Features
+.Ss Bagian 11.1: Ternary Relationship
+.Bd -literal -offset indent
+              +---------+
+              | project |
+              +---------+
+                   |
+                   |
++----------+   <> proj_guide <>   +----------+
+| instructor |---<          >---| student   |
++----------+   <>          <>   +----------+
+.Ed
+.Sy Aturan:
+Paling banyak satu panah keluar dari ternary relationship buat
+indicate cardinality constraint.
+.Pp
+.Sy Contoh:
+Panah dari
+.Sy proj_guide
+ke
+.Sy instructor
+indicate tiap student punya paling banyak satu guide untuk
+project.
+.Pp
+.Sy Kalau ada lebih dari satu panah:
+Ada dua cara define meaning-nya, dan ini bikin ambiguity.
+Makanya kita
+.Sy outlaw
+lebih dari satu panah.
+.Ss Bagian 11.2: Specialization
+.Sy Top-down design process.
+Kita designate sub-grouping dalam entity set yang distinctive
+dari entity lain.
+.Pp
+.Sy Sub-grouping
+jadi lower-level entity set yang punya atribut atau participate
+di relationship yang nggak apply ke higher-level entity set.
+.Pp
+.Sy Depicted by triangle
+dengan label
+.Sy ISA
+(instructor "is a" person).
+.Pp
+.Sy Attribute inheritance:
+Lower-level entity set inherit semua atribut dan relationship
+participation dari higher-level entity set.
+.Ss Bagian 11.3: Generalization
+.Sy Bottom-up design process.
+Combine entity set yang share fitur sama jadi higher-level
+entity set.
+.Pp
+.Sy Specialization dan generalization
+itu simple inversions. Direpresentasi sama di ER diagram.
+Istilahnya dipakai interchangeable.
+.Ss Bagian 11.4: Completeness Constraint
+.Sy Specifies
+apakah entity di higher-level entity set harus belong ke minimal
+satu lower-level entity set.
+.Bl -tag -width "Total" -offset indent
+.It Sy Total
+Entity harus belong ke salah satu lower-level entity set.
+.It Sy Partial
+Entity nggak harus belong ke lower-level entity set.
+.El
+.Sy Partial
+adalah default.
+.Ss Bagian 11.5: Aggregation
+.Sy Masalah:
+Relationship set
+.Sy eval_for
+dan
+.Sy proj_guide
+represent overlapping information.
+.Pp
+.Sy Setiap eval_for
+corresponds ke satu proj_guide relationship.
+Tapi beberapa proj_guide mungkin nggak punya eval_for.
+Jadi kita nggak bisa discard proj_guide.
+.Pp
+.Sy Solusi:
+Eliminasi redundancy via
+.Sy aggregation .
+Treat relationship as abstract entity.
+Ini memungkinkan relationships between relationships.
+.Ss Bagian 12: Design Issues
+.Bl -tag -width "Binary vs non-binary" -offset indent
+.It Sy Entity set vs attribute
+Gunakan entity set kalau butuh extra informasi tentang object.
+Contoh: phone as entity (bisa punya location) vs phone as
+attribute (cuma nomor).
+.It Sy Entity set vs relationship set
+Gunakan relationship set buat describe action yang terjadi
+antara entities.
+.It Sy Binary vs non-binary
+Non-binary relationship kadang lebih jelas. Tapi kadang
+binary lebih baik.
+Contoh:
+.Sy parents
+(ternary: child, father, mother) lebih baik di-replace jadi
+dua binary:
+.Sy father
+dan
+.Sy mother .
+.It Sy Strong vs weak entity set
+Weak entity set kalau entity nggak punya cukup atribut buat
+identify diri sendiri.
+.It Sy Specialization/generalization
+Bikin modular design.
+.It Sy Aggregation
+Treat aggregate entity set sebagai single unit tanpa peduli
+detail internal.
+.El
+.Ss Bagian 13: ER vs UML
+.Sy UML
+= Unified Modeling Language. Punya banyak komponen buat model
+software system.
+.Pp
+.Sy UML Class Diagram
+corresponds ke ER diagram, tapi ada beberapa perbedaan:
+.Bl -tag -width "Kardinalitas" -offset indent
+.It Sy Entity set
+Jadi class. Atribut prefix:
+.Sy + No = public,
+.Sy - No = private,
+.Sy # No = protected.
+.It Sy Relationship set
+Digambar sebagai garis yang connect entity set. Nama relationship
+ditulis di samping garis.
+.It Sy Cardinality constraint
+Dibalik posisinya. Di ER, constraint di dekat entity. Di UML,
+constraint di ujung yang berlawanan.
+.El
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                 Inti
+Entity                 Object yang distinguishable
+Entity set             Set entity dengan tipe sama
+Attribute              Property dari entity
+Relationship           Asosiasi antar entity
+Relationship set       Himpunan relationship
+Cardinality            One-to-one, one-to-many, many-to-many
+Participation          Total atau partial
+Weak entity            Existence dependent ke entity lain
+Strong entity          Nggak weak
+Discriminator          Atribut tambahan buat identify weak entity
+Identifying entity     Entity yang own weak entity
+Identifying rel        Relationship yang link weak ke strong
+Specialization         Top-down, bikin sub-group
+Generalization         Bottom-up, combine entity set
+Aggregation            Treat relationship as entity
+ISA triangle           Simbol specialization/generalization
+UML                    Alternatif notasi ER
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy ER model itu alat desain, bukan alat implementasi.
+Dia bantu kamu mikir tentang entity, relationship, dan constraint
+sebelum kamu commit ke schema tertentu. Kalau ER diagram-nya udah
+bener, reduction ke relation schema itu mechanical.
+.Pp
+Yang belum dijawab di sini: gimana caranya mastiin ER diagram
+kamu "bener"? Kapan pakai specialization, kapan nggak? Bagaimana
+compare dua alternatif desain? Itu topik lanjutan: normalization
+theory. Kalau penasaran, cari sendiri.
+.Sh SEE ALSO
+.Xr relational-model 1 ,
+.Xr relational-calculus 1 ,
+.Xr database-intro 1
+.Sh AUTHORS
+.An mroczect
