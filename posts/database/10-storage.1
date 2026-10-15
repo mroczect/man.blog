@@ -1,0 +1,697 @@
+.Dd 2026-10-15 18:00:00
+.Dt STORAGE 1
+.Os
+.Sh NAME
+.Nm storage
+.Nd media penyimpanan, RAID, dan organisasi file
+.Sh DESCRIPTION
+Ini catatan Chapter 10 dari buku Database System Concepts. Isinya:
+media penyimpanan fisik, magnetic disk, RAID, tertiary storage,
+storage access, file organization, dan data dictionary.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+database itu hidup di disk. Kalau kamu nggak paham disk, kamu
+nggak paham kenapa query bisa lambat atau cepet.
+.Ss Bagian 1: Klasifikasi Media Penyimpanan
+Media penyimpanan dibedain berdasarkan tiga faktor:
+.Bl -tag -width "Reliability" -offset indent
+.It Sy Speed
+Seberapa cepet data bisa diakses.
+.It Sy Cost
+Biaya per unit data.
+.It Sy Reliability
+Ketahanan terhadap power failure atau crash.
+.El
+.Sy Dua kategori utama:
+.Bl -tag -width "Non-volatile" -offset indent
+.It Sy Volatile
+Isi hilang kalau power mati. Contoh: cache, main memory.
+.It Sy Non-volatile
+Isi tetap ada walau power mati. Contoh: disk, flash, tape.
+.El
+.Ss Bagian 2: Physical Storage Media
+.Ss Bagian 2.1: Cache
+.Sy Paling cepet dan paling mahal.
+Volatile. Dikelola hardware komputer, bukan software.
+.Ss Bagian 2.2: Main Memory
+.Sy Akses cepet
+\(em puluhan sampai ratusan nanosecond. Tapi:
+.Bl -bullet -offset indent
+.It
+Terlalu kecil atau terlalu mahal buat simpen database penuh.
+.It
+Kapasitas beberapa gigabyte.
+.It
+Volatile \(em hilang kalau power mati.
+.El
+.Sy Tren:
+Kapasitas naik, biaya per byte turun, kira-kira 2x tiap 2-3 tahun.
+.Ss Bagian 2.3: Flash Memory
+.Sy Karakteristik:
+.Bl -bullet -offset indent
+.It
+Data survive power failure.
+.It
+Data bisa ditulis sekali, tapi lokasi bisa di-erase dan ditulis ulang.
+.It
+Cuma support 10K \(em 1M write/erase cycles.
+.It
+Erase harus seluruh bank memory sekaligus.
+.It
+Read secepat main memory, tapi write lambat (beberapa
+microsecond), erase lebih lambat lagi.
+.El
+.Sy Dipakai di:
+Digital camera, phone, USB key.
+.Ss Bagian 2.4: Magnetic Disk
+.Sy Karakteristik:
+.Bl -bullet -offset indent
+.It
+Data disimpen di disk yang berputar, dibaca/ditulis magnetically.
+.It
+Media utama buat long-term storage.
+.It
+Data harus dipindah ke main memory buat diakses.
+.It
+Lebih lambat dari main memory.
+.It
+Direct-access \(em bisa baca di urutan apapun.
+.It
+Kapasitas sampai ~1.5 TB (tahun 2009).
+.It
+Survive power failure dan system crash.
+.It
+Disk failure bisa hancurin data, tapi jarang.
+.El
+.Ss Bagian 2.5: Optical Storage
+.Sy Karakteristik:
+.Bl -bullet -offset indent
+.It
+Non-volatile, dibaca optik pakai laser dari disk berputar.
+.It
+CD-ROM (640 MB), DVD (4.7-17 GB), Blu-ray (27-54 GB).
+.It
+WORM (Write Once Read Many) buat archival: CD-R, DVD-R.
+.It
+Multiple write versions: CD-RW, DVD-RW, DVD-RAM.
+.It
+Read/write lebih lambat dari magnetic disk.
+.El
+.Sy Jukebox systems:
+Banyak disk removable, beberapa drive, mekanisme auto-load.
+Buat simpen volume data besar.
+.Ss Bagian 2.6: Tape Storage
+.Sy Karakteristik:
+.Bl -bullet -offset indent
+.It
+Non-volatile, buat backup dan archival.
+.It
+Sequential-access \(em jauh lebih lambat dari disk.
+.It
+Kapasitas tinggi: 40-300 GB per tape.
+.It
+Tape bisa dilepas dari drive, jadi storage cost lebih murah
+dari disk. Tapi drive-nya mahal.
+.It
+Tape jukebox: ratusan terabyte sampai multiple petabyte.
+.El
+.Ss Bagian 3: Storage Hierarchy
+Hierarki dari yang paling cepet dan mahal ke paling lambat dan
+murah:
+.Bd -literal -offset indent
+cache         (paling cepet, paling mahal, volatile)
+  |
+main memory   (cepet, volatile)
+  |
+flash memory  (non-volatile, terbatas write cycles)
+  |
+magnetic disk (non-volatile, kapasitas besar)
+  |
+optical disk  (non-volatile, lebih lambat)
+  |
+magnetic tape (non-volatile, sequential, paling murah)
+.Ed
+.Ss Bagian 3.1: Primary vs Secondary vs Tertiary
+.Bl -tag -width "Tertiary" -offset indent
+.It Sy Primary storage
+Paling cepet tapi volatile. Cache, main memory.
+.It Sy Secondary storage
+Non-volatile, moderate access time. Juga disebut on-line storage.
+Flash, magnetic disk.
+.It Sy Tertiary storage
+Non-volatile, slow access. Juga disebut off-line storage.
+Tape, optical.
+.El
+.Ss Bagian 4: Magnetic Hard Disk Mechanism
+.Sy Komponen:
+.Bl -tag -width "Read-write head" -offset indent
+.It Sy Platter
+Piringan tempat data disimpen.
+.It Sy Track
+Lingkaran di permukaan platter.
+.It Sy Sector
+Bagian dari track. Smallest unit of data yang bisa dibaca/ditulis.
+.It Sy Cylinder
+Track ke-i dari semua platter.
+.It Sy Read-write head
+Dibaca/ditulis magnetically. Posisinya sangat dekat dengan
+platter (hampir nempel).
+.It Sy Disk arm
+Lengan yang gerakin head ke track yang bener.
+.It Sy Spindle
+Poros tempat platter berputar.
+.El
+.Sy Cara baca satu sector:
+.Bl -enun -offset indent
+.It
+Disk arm geser ke track yang bener.
+.It
+Platter berputar terus.
+.It
+Data dibaca/ditulis pas sector lewat di bawah head.
+.El
+.Sy Kapasitas:
+.Bl -bullet -offset indent
+.It
+50K-100K track per platter.
+.It
+Sector size 512 byte.
+.It
+Sector per track: 500-1000 (inner) sampai 1000-2000 (outer).
+.It
+Head-disk assembly: 1-5 platter per spindle.
+.El
+.Ss Bagian 4.1: Disk Controller
+.Sy Interface antara komputer dan disk drive hardware.
+Tugasnya:
+.Bl -bullet -offset indent
+.It
+Terima high-level command buat baca/tulis sector.
+.It
+Initiate action \(em gerakin arm, baca/tulis data.
+.It
+Hitung dan attach checksum ke tiap sector.
+.It
+Verify write dengan baca balik sector.
+.It
+Remapping bad sector.
+.El
+.Sy Checksum:
+Kalau data corrupt, dengan high probability stored checksum
+nggak match sama recomputed checksum.
+.Ss Bagian 4.2: Disk Interface Standards
+.Bl -tag -width "SCSI" -offset indent
+.It Sy ATA / SATA
+AT adaptor, Serial ATA.
+.It Sy SCSI / SAS
+Small Computer System Interconnect, Serial Attached SCSI.
+.It Sy Fiber Channel
+FC2Gb atau 4Gb.
+.El
+.Sy Kecepatan:
+SATA 150 MB/s, SATA-II 3Gb (300 MB/s), Ultra 320 SCSI 320 MB/s,
+SAS 3-6 Gb/s, FC 256-512 MB/s.
+.Ss Bagian 4.3: SAN vs NAS
+.Bl -tag -width "NAS" -offset indent
+.It Sy SAN (Storage Area Network)
+Banyak disk disambung lewat high-speed network ke beberapa
+server.
+.It Sy NAS (Network Attached Storage)
+Networked storage yang provide file system interface pakai
+networked file system protocol, bukan disk system interface.
+.El
+.Ss Bagian 5: Disk Performance
+.Ss Bagian 5.1: Access Time
+.Sy Waktu dari request issued sampai data transfer mulai.
+Terdiri dari:
+.Bl -tag -width "Rotational latency" -offset indent
+.It Sy Seek time
+Waktu buat reposition arm ke track yang bener.
+Average = 1/2 worst case. 4-10 ms di disk modern.
+.It Sy Rotational latency
+Waktu buat sector muncul di bawah head.
+Average = 1/2 worst case. 4-11 ms (5400-15000 rpm).
+.It Sy Data-transfer rate
+Rate data bisa diambil/disimpen. 25-100 MB/s max.
+.El
+.Ss Bagian 5.2: MTTF (Mean Time To Failure)
+.Sy Rata-rata waktu disk jalan tanpa failure.
+.Bl -bullet -offset indent
+.It
+Typically 3-5 tahun.
+.It
+"Theoretical MTTF" 500,000-1,200,000 jam buat disk baru.
+.It
+MTTF turun seiring umur disk.
+.El
+.Sy Contoh:
+MTTF 1,200,000 jam = kalau kamu punya 1000 disk baru, rata-rata
+satu failure tiap 1200 jam.
+.Ss Bagian 5.3: Block
+.Sy Block
+= contiguous sequence of sectors dari satu track.
+.Pp
+.Sy Ukuran:
+512 byte sampai beberapa kilobyte. Typical: 4-16 KB.
+.Pp
+.Sy Trade-off:
+.Bl -bullet -offset indent
+.It
+Block kecil: lebih banyak transfer dari disk.
+.It
+Block besar: lebih banyak space terbuang karena partially
+filled block.
+.El
+.Ss Bagian 5.4: Disk-Arm Scheduling
+.Sy Elevator algorithm:
+Disk arm gerak satu arah, layanin request sepanjang jalan, terus
+balik arah. Minimize arm movement.
+.Ss Bagian 6: File Organization
+.Sy Optimize block access time
+dengan organize block sesuai cara data bakal diakses.
+Contoh: simpen related information di cylinder yang sama atau
+berdekatan.
+.Pp
+.Sy Fragmentasi:
+Files bisa jadi fragmented seiring waktu. Kalau data di-insert/
+delete, atau free block scattered, block dari file baru jadi
+scattered juga.
+.Pp
+.Sy Solusi:
+Defragmentation utility.
+.Ss Bagian 6.1: Nonvolatile Write Buffers
+.Sy Speed up disk writes
+dengan nulis block ke non-volatile RAM buffer dulu.
+.Bl -bullet -offset indent
+.It
+Non-volatile RAM: battery-backed RAM atau flash memory.
+.It
+Walau power mati, data aman.
+.It
+Controller nulis ke disk pas disk nggak ada request lain.
+.El
+.Sy Log disk:
+Disk yang devoted buat nulis sequential log of block updates.
+Write ke log disk sangat cepet karena nggak butuh seeks.
+.Ss Bagian 6.2: Flash Storage
+.Bl -tag -width "NAND flash" -offset indent
+.It Sy NOR flash
+Lebih mahal.
+.It Sy NAND flash
+Lebih murah, widely used. Read page-at-a-time (512 byte - 4 KB).
+Transfer rate ~20 MB/s.
+.It Sy Solid state disks (SSD)
+Multiple flash devices, transfer rate 100-200 MB/s.
+.El
+.Sy Masalah:
+Erase lambat (1-2 ms). Erase block contains multiple pages.
+.Sy Solusi:
+Remapping logical page addresses to physical page addresses.
+Translation table track mapping.
+.Sy Wear leveling:
+Setelah 100,000-1,000,000 erase, erase block unreliable.
+.Ss Bagian 7: RAID
+.Sy RAID
+= Redundant Arrays of Independent Disks.
+.Pp
+.Sy Tujuan:
+.Bl -bullet -offset indent
+.It
+High capacity.
+.It
+High speed (parallel).
+.It
+High reliability (redundancy).
+.El
+.Sy Kenapa perlu?
+Chance some disk out of N disks gagal lebih tinggi dari chance
+satu disk spesifik gagal. Contoh: 100 disk dengan MTTF 100,000
+jam masing-masing \(-> system MTTF 1000 jam (~41 hari).
+.Ss Bagian 7.1: Redundancy via Mirroring
+.Sy Mirroring (shadowing):
+Duplicate setiap disk. Setiap write ke dua disk. Read dari
+salah satu.
+.Pp
+.Sy Data loss:
+Cuma kalau disk gagal dan mirror-nya gagal sebelum diperbaiki.
+.Pp
+.Sy Contoh:
+MTTF 100,000 jam, mean time to repair 10 jam \(-> mean time to
+data loss 500 juta jam (~57,000 tahun).
+.Ss Bagian 7.2: Redundancy via Striping
+.Sy Bit-level striping:
+Split bits of each byte across multiple disks. 8 disk = 8x rate.
+Tapi seek time lebih buruk. Jarang dipakai.
+.Pp
+.Sy Block-level striping:
+Dengan n disk, block ke-i dari file ke disk (i mod n) + 1.
+Request buat different block bisa parallel.
+.Ss Bagian 7.3: RAID Levels
+.Bl -tag -width "RAID 5" -offset indent
+.It Sy RAID 0
+Block striping, non-redundant. Buat high-performance tapi
+data loss nggak critical.
+.It Sy RAID 1
+Mirrored disks with block striping. Best write performance.
+.It Sy RAID 2
+Memory-style ECC with bit striping. Jarang dipakai.
+.It Sy RAID 3
+Bit-interleaved parity. Single parity bit cukup buat error
+correction.
+.It Sy RAID 4
+Block-interleaved parity. Parity block di disk terpisah.
+Parity block jadi bottleneck.
+.It Sy RAID 5
+Block-interleaved distributed parity. Parity disebar di semua
+disk. Higher I/O rate dari Level 4.
+.It Sy RAID 6
+P+Q redundancy. Extra redundant info buat multiple disk failure.
+Lebih reliable dari Level 5, tapi lebih mahal.
+.El
+.Ss Bagian 7.4: Faktor Pemilihan RAID
+.Bl -bullet -offset indent
+.It
+Monetary cost.
+.It
+Performance: I/O per second, bandwidth.
+.It
+Performance selama failure.
+.It
+Performance selama rebuild.
+.El
+.Sy Rekomendasi:
+.Bl -bullet -offset indent
+.It
+RAID 0 cuma kalau data safety nggak penting.
+.It
+RAID 2 dan 4 nggak dipakai (subsumed by 3 dan 5).
+.It
+RAID 3 nggak dipakai (bit-striping waste disk arm movement).
+.It
+RAID 6 jarang dipakai (Level 1 dan 5 cukup).
+.It
+RAID 1 write performance bagus, dipilih buat log disk.
+.It
+RAID 5 buat low update rate, data besar.
+.El
+.Ss Bagian 7.5: Hardware Issues
+.Bl -tag -width "Hardware RAID" -offset indent
+.It Sy Software RAID
+Implementasi di software, no special hardware.
+.It Sy Hardware RAID
+Special hardware. Non-volatile RAM buat record writes.
+.El
+.Sy Latent failures:
+Data yang udah ditulis earlier jadi damaged. Bisa cause data
+loss walau cuma satu disk gagal.
+.Sy Data scrubbing:
+Continually scan for latent failures, recover dari copy/parity.
+.Sy Hot swapping:
+Replace disk while system running. Reduces recovery time.
+.Ss Bagian 8: Tertiary Storage
+.Ss Bagian 8.1: Optical Disks
+.Bl -tag -width "DVD" -offset indent
+.It Sy CD-ROM
+640 MB. Seek time ~100 ms. 3000 RPM. 3-6 MB/s.
+.It Sy DVD
+DVD-5 4.7 GB, DVD-9 8.5 GB, DVD-10 9.4 GB, DVD-18 17 GB.
+.It Sy Blu-ray
+27 GB, 54 GB double-sided.
+.It Sy CD-R / DVD-R
+Write once. High capacity, long lifetime. Archival.
+.It Sy CD-RW / DVD-RW
+Multi-write.
+.El
+.Ss Bagian 8.2: Tape
+.Bl -bullet -offset indent
+.It
+DAT: few GB. DLT: 10-40 GB. Ultrium: 100+ GB. Ampex: 330 GB.
+.It
+Transfer rate: few to 10s MB/s.
+.It
+Tape murah, tapi drive mahal.
+.It
+Sequential access only.
+.It
+Tape jukebox: multiple petabyte.
+.El
+.Ss Bagian 9: File Organization (Record)
+.Sy Database disimpen sebagai collection of files.
+Setiap file = sequence of records. Record = sequence of fields.
+.Ss Bagian 9.1: Fixed-Length Records
+.Sy Simple approach:
+Simpen record i dari byte n*(i-1), n = ukuran record.
+.Pp
+.Sy Masalah:
+Record bisa cross block boundaries.
+.Sy Solusi:
+Jangan allow records cross block boundaries.
+.Ss Bagian 9.2: Deletion
+.Sy Tiga alternatif:
+.Bl -enun -offset indent
+.It
+Move records i+1..n ke i..n-1 (compacting).
+.It
+Move record n ke i (hapus record terakhir).
+.It
+Jangan move record, link semua free record di free list.
+.El
+.Sy Free list:
+Simpen address record deleted pertama di file header.
+Record pertama itu simpen address record deleted kedua, dst.
+More space efficient: reuse space atribut normal buat pointers.
+.Ss Bagian 9.3: Variable-Length Records
+.Sy Kapan terjadi:
+.Bl -bullet -offset indent
+.It
+Multiple record types dalam satu file.
+.It
+Record types dengan variable length fields (varchar).
+.It
+Record types dengan repeating fields.
+.El
+.Sy Representasi:
+.Bl -bullet -offset indent
+.It
+Attributes disimpen in order.
+.It
+Variable length attribute represented by fixed size (offset,
+length), actual data stored after all fixed length attributes.
+.It
+Null values represented by null-value bitmap.
+.El
+.Ss Bagian 9.4: Slotted Page Structure
+.Sy Header berisi:
+.Bl -bullet -offset indent
+.It
+Number of record entries.
+.It
+End of free space in block.
+.It
+Location and size of each record.
+.El
+.Sy Records bisa digerakin dalam page
+buat keep contiguous. Entry di header harus diupdate.
+.Pp
+.Sy Pointers
+nggak boleh point langsung ke record. Harus point ke entry
+untuk record di header.
+.Ss Bagian 9.5: Organisasi Record
+.Bl -tag -width "Hashing" -offset indent
+.It Sy Heap
+Record ditaruh di mana aja yang ada space.
+.It Sy Sequential
+Record disimpen in order berdasarkan search key.
+.It Sy Hashing
+Hash function dihitung dari atribut. Hasilnya nentuin block.
+.It Sy Multitable clustering
+Record dari beberapa relation disimpen di file yang sama.
+Motif: minimize I/O dengan simpen related records di block sama.
+.El
+.Ss Bagian 9.6: Sequential File Organization
+.Sy Cocok buat:
+Aplikasi yang butuh sequential processing seluruh file.
+.Pp
+.Sy Deletion:
+Pakai pointer chains.
+.Pp
+.Sy Insertion:
+.Bl -enun -offset indent
+.It
+Cari posisi yang tepat.
+.It
+Kalau ada free space, insert di situ.
+.It
+Kalau nggak ada, insert di overflow block.
+.It
+Update pointer chain.
+.El
+.Sy Reorganize:
+Dari waktu ke waktu, restore sequential order.
+.Ss Bagian 9.7: Multitable Clustering
+.Sy Simpen beberapa relation di satu file.
+Contoh: department dan instructor.
+.Pp
+.Sy Bagus buat:
+Query yang involve join department dan instructor.
+.Pp
+.Sy Jelek buat:
+Query yang cuma involve department.
+.Pp
+.Sy Hasil:
+Variable size records. Bisa tambah pointer chains buat link
+record dari relation tertentu.
+.Ss Bagian 10: Data Dictionary
+.Sy Data dictionary (system catalog)
+simpen metadata \(em data tentang data.
+.Pp
+.Sy Isinya:
+.Bl -tag -width "Statistik" -offset indent
+.It Sy Informasi tentang relation
+Nama relation, nama/tipe/length atribut, nama/definisi view,
+integrity constraint.
+.It Sy User dan accounting
+Including password.
+.It Sy Statistik dan deskriptif
+Jumlah tuple per relation.
+.It Sy Physical file organization
+Bagaimana relation disimpen (sequential/hash/...).
+.It Sy Physical location
+Lokasi relation.
+.It Sy Informasi tentang index
+.El
+.Ss Bagian 10.1: Representasi Relational
+.Sy Di disk:
+Relational representation.
+.Sy Di memory:
+Specialized data structures buat efficient access.
+.Pp
+.Sy Contoh tabel metadata:
+.Bd -literal -offset indent
+Relation_metadata:
+  relation_name, number_of_attributes,
+  storage_organization, location
+
+Attribute_metadata:
+  relation_name, attribute_name,
+  domain_type, position, length
+
+Index_metadata:
+  index_name, relation_name,
+  index_type, index_attributes
+
+User_metadata:
+  user_name, encrypted_password, group
+
+View_metadata:
+  view_name, definition
+.Ed
+.Ss Bagian 11: Storage Access
+.Sy Block
+= fixed-length storage unit. Unit of storage allocation dan
+data transfer.
+.Pp
+.Sy Tujuan database system:
+Minimize jumlah block transfer antara disk dan memory.
+Caranya: keep sebanyak mungkin block di main memory.
+.Ss Bagian 11.1: Buffer Manager
+.Bl -tag -width "Buffer manager" -offset indent
+.It Sy Buffer
+Portion of main memory available buat simpen copy of disk block.
+.It Sy Buffer manager
+Subsystem yang allocate buffer space di main memory.
+.El
+.Sy Algoritma:
+.Bl -enun -offset indent
+.It
+Kalau block udah di buffer, return address-nya.
+.It
+Kalau belum:
+.Bl -enun -offset indent
+.It
+Allocate space. Replace block lain kalau perlu.
+.It
+Replaced block ditulis balik ke disk hanya kalau dimodif.
+.It
+Baca block dari disk ke buffer.
+.It
+Return address ke requester.
+.El
+.El
+.Ss Bagian 11.2: Replacement Strategy
+.Bl -tag -width "Toss-immediate" -offset indent
+.It Sy LRU (Least Recently Used)
+Ganti block yang paling lama nggak diakses.
+.Idea:
+Use past pattern sebagai predictor future.
+.It Sy MRU (Most Recently Used)
+System pin block yang sedang diproses. Setelah selesai,
+block unpinned dan jadi MRU.
+.It Sy Toss-immediate
+Free space block begitu tuple terakhir diproses.
+.El
+.Sy Kenapa LRU bisa jelek?
+Buat query yang repeated scan (nested loop join), LRU bisa
+ganti block yang baru aja dipakai, padahal besok dipakai lagi.
+.Sy Solusi:
+Mixed strategy dengan hints dari query optimizer.
+.Ss Bagian 11.3: Pinned Block
+.Sy Block di memory yang nggak boleh ditulis balik ke disk.
+.Pp
+.Sy Contoh:
+Block yang sedang diproses, atau block yang lagi di-update.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                Inti
+Volatile              Hilang kalau power mati
+Non-volatile          Tetap ada
+Cache                 Paling cepet, volatile
+Main memory           Cepet, volatile
+Flash memory          Non-volatile, write terbatas
+Magnetic disk         Non-volatile, direct access
+Optical disk          Non-volatile, laser
+Tape                  Non-volatile, sequential
+Primary storage       Cache + main memory
+Secondary storage     Flash + disk
+Tertiary storage      Tape + optical
+Track                 Lingkaran di platter
+Sector                Smallest unit of data
+Cylinder              Track ke-i dari semua platter
+Seek time             Waktu reposition arm
+Rotational latency    Waktu sector muncul
+MTTF                  Mean time to failure
+Block                 Contiguous sectors
+RAID                  Redundant array of independent disks
+Mirroring             Duplicate disk
+Striping              Split data across disks
+Parity                Redundancy via XOR
+Fixed-length record   Record dengan ukuran tetap
+Variable-length       Record dengan ukuran berubah
+Slotted page          Page dengan slot header
+Heap                  Record di mana aja
+Sequential            Record in order
+Hashing               Hash function
+Multitable clustering Simpen beberapa relation
+Data dictionary       Metadata
+Buffer                Portion of memory
+Buffer manager        Allocate buffer space
+LRU                   Least recently used
+Pinned block          Block nggak boleh ditulis
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy disk itu lambat, memory itu cepet.
+Semua teknik di chapter ini \(em caching, buffering, RAID,
+clustering \(em tujuannya satu: minimize jumlah kali kamu
+harus nyentuh disk.
+.Pp
+Yang belum dijawab di sini: gimana caranya database nentuin
+block mana yang perlu di-cache? Kapan pakai LRU, kapan pakai
+MRU? Gimana caranya recovery kalau disk failure? Itu topik
+lanjutan: buffer replacement policy, recovery. Kalau
+penasaran, cari sendiri.
+.Sh SEE ALSO
+.Xr indexing 1 ,
+.Xr database-intro 1 ,
+.Xr normalization 1
+.Sh AUTHORS
+.An mroczect
