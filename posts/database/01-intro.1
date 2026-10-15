@@ -1,0 +1,458 @@
+.Dd 2026-10-15 18:30:00
+.Dt DATABASE-INTRO 1
+.Os
+.Sh NAME
+.Nm database-intro
+.Nd pengantar sistem database, dari kenapa sampai gimana
+.Sh DESCRIPTION
+Ini catatan Chapter 1 dari buku silabus Database System Concepts.
+Isinya: kenapa database dibutuhin, apa aja komponennya, gimana
+cara kerjanya, dan gimana sejarahnya sampai jadi kayak sekarang.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada, bukan cuma
+apa dia. Karena kalau cuma hafal definisi, nanti lupa. Kalau
+paham masalahnya, solusinya bisa dibangun ulang.
+.Ss Bagian 1: Kenapa Sih Butuh Database?
+Bayangin tahun 1960-an. Bank punya data nasabah. Disimpen di
+file-file teks. Tiap aplikasi punya file sendiri. Teller punya
+file teller, bagian kredit punya file kredit, bagian tabungan
+punya file tabungan.
+.Pp
+Sekarang nasabah yang sama mau buka rekening baru. Datanya
+disimpen di tiga tempat. Kalau dia ganti alamat, harus update
+di tiga tempat. Kalau salah satu lupa diupdate, datanya jadi
+nggak konsisten.
+.Pp
+Ini yang disebut
+.Sy file system approach .
+Simpel, tapi punya banyak masalah. Ada 6 masalah klasik:
+.Bl -tag -width "Concurrent access" -offset indent
+.It Sy Data redundancy dan inconsistency
+File format beda-beda, informasi yang sama diulang di banyak
+file. Update satu, yang lain ketinggalan.
+.It Sy Difficulty in accessing data
+Mau bikin laporan baru? Harus nulis program baru. Tiap
+pertanyaan butuh program sendiri. Nggak scalable.
+.It Sy Data isolation
+Data tersebar di banyak file dan format. Susah dihubungin.
+.It Sy Integrity problems
+Constraint kayak "saldo harus > 0" ditulis di kode program,
+bukan di database. Kalau mau nambah constraint baru, harus
+ubah kode di banyak tempat.
+.It Sy Atomicity of updates
+Transfer uang dari A ke B harusnya "selesai semua atau nggak
+sama sekali". Kalau sistem mati di tengah jalan, uang bisa
+hilang atau dobel.
+.It Sy Concurrent access
+Dua orang tarik uang bersamaan. Dua-duanya baca saldo 100,
+dua-duanya tarik 50. Saldo akhir harusnya 0, tapi bisa jadi
+50 karena race condition.
+.El
+.Sy Database itu jawaban buat 6 masalah ini.
+Bukan cuma "tempat nyimpen data", tapi "tempat nyimpen data
+yang konsisten, aman, dan bisa diakses barengan".
+.Ss Bagian 2: Database Itu Apa?
+Definisi: kumpulan data yang saling terkait, plus sekumpulan
+program buat ngakses data itu.
+.Pp
+Kenapa "saling terkait"? Karena kalau data nggak related,
+kamu nggak butuh database. Cukup spreadsheet.
+.Pp
+Kenapa "program buat ngakses"? Karena data mentah nggak
+berguna. Yang bikin berguna adalah kemampuan query, update,
+dan manage.
+.Pp
+DBMS (Database Management System) itu software yang ngatur
+semua ini. Contoh: PostgreSQL, MySQL, Oracle, SQL Server,
+SQLite.
+.Pp
+Database dipakai di mana aja? Di mana-mana:
+.Bl -bullet -offset indent
+.It
+Perbankan: transaksi, saldo, riwayat.
+.It
+Maskapai: reservasi, jadwal, kursi.
+.It
+Universitas: registrasi, nilai, KRS.
+.It
+E-commerce: pesanan, produk, pelanggan.
+.It
+Manufaktur: produksi, inventory, supply chain.
+.It
+HR: data karyawan, gaji, pajak.
+.El
+Database itu sentuh semua aspek hidup kita. Tiap kali kamu
+buka aplikasi, buka website, geser kartu ATM, ada database
+di belakangnya.
+.Ss Bagian 3: Level Abstraksi Data
+Data di database itu dilihat dari 3 level berbeda:
+.Bl -tag -width "View level" -offset indent
+.It Sy Physical level
+Gimana record disimpen di disk. Byte-level. Ini urusan
+engineer yang bikin DBMS.
+.It Sy Logical level
+Data apa yang disimpen dan hubungan antar data. Contoh:
+"instructor punya ID, name, dept_name, salary". Ini urusan
+DBA (Database Administrator).
+.It Sy View level
+Aplikasi nyembunyiin detail. User biasa nggak perlu tau
+struktur lengkap. View bisa nyembunyiin informasi sensitif
+(misal salary) buat alasan keamanan.
+.El
+Kenapa perlu 3 level? Karena data independence. Kamu bisa ubah
+cara nyimpen data (physical) tanpa ganggu aplikasi (view). Kamu
+bisa nambah kolom (logical) tanpa ganggu user (view).
+.Pp
+Contoh konkret: kamu ubah hard disk dari HDD ke SSD. Itu
+perubahan physical. Aplikasi kamu nggak perlu tau, nggak
+perlu ubah kode. Yang penting logical schema-nya sama.
+.Ss Bagian 4: Schema vs Instance
+Dua istilah yang sering ketuker.
+.Bl -tag -width "Instance" -offset indent
+.It Sy Schema
+Struktur database. Contoh: "tabel instructor punya kolom
+ID, name, dept_name, salary". Ini jarang berubah.
+.It Sy Instance
+Isi database pada titik waktu tertentu. Contoh: "sekarang
+ada 12 instructor, dengan nama-nama tertentu". Ini berubah
+tiap ada insert/update/delete.
+.El
+Analogi: schema itu kayak tipe variabel di programming
+.Sy (int, string) ,
+instance itu kayak nilai variabelnya
+.Sy (5, "halo") .
+.Ss Bagian 5: Data Model
+Data model itu seperangkat alat buat ngasih tau:
+.Bl -bullet -offset indent
+.It
+Data apa yang ada
+.It
+Hubungan antar data
+.It
+Semantiknya apa
+.It
+Constraint-nya apa
+.El
+Ada beberapa jenis:
+.Bl -tag -width "Semistructured" -offset indent
+.It Sy Relational model
+Data disimpen di tabel. Paling umum dipakai. Contoh: semua
+DBMS modern pakai ini.
+.It Sy Entity-Relationship model
+Buat desain database. Lebih ke diagram, bukan implementasi.
+.It Sy Object-based model
+Extend relational, support tipe kompleks. Kayak object-oriented
+tapi di database.
+.It Sy Semistructured model
+Data yang nggak punya schema kaku. Contoh: XML, JSON.
+.It Sy Network dan Hierarchical model
+Model lama, tahun 60-an. Sebelum relational ada.
+.El
+.Ss Bagian 6: Relational Model
+Model ini paling populer. Konsepnya simpel: semua data
+disimpen di tabel.
+.Pp
+Tabel punya:
+.Bl -bullet -offset indent
+.It
+Kolom (columns) — atribut, misal ID, name, salary
+.It
+Baris (rows) — record, misal satu instructor
+.El
+Contoh:
+.Bd -literal -offset indent
+ID     name         dept_name    salary
+22222  Einstein     Physics      95000
+12121  Wu           Finance      90000
+32343  El Said      History      60000
+45565  Katz         Comp. Sci.   75000
+98345  Kim          Elec. Eng.   80000
+.Ed
+.Pp
+Ini satu tabel. Database biasanya punya banyak tabel yang
+saling terkait. Contoh, tabel
+.Sy department
+yang nyimpen data departemen:
+.Bd -literal -offset indent
+dept_name    building    budget
+Comp. Sci.   Taylor      100000
+Biology      Watson      90000
+Elec. Eng.   Taylor      85000
+Music        Packard     80000
+Finance      Painter     120000
+History      Painter     50000
+Physics      Watson      70000
+.Ed
+.Pp
+.Sy Kenapa dipisah?
+Karena kalau digabung, data departemen diulang di tiap
+instructor. Kalau budget departemen berubah, kamu harus update
+di banyak baris. Ini masalah yang mau dihindari.
+.Ss Bagian 7: DDL dan DML
+Ada dua bahasa di database:
+.Bl -tag -width "DML" -offset indent
+.It Sy DDL (Data Definition Language)
+Buat define struktur database. Contoh:
+.Bd -literal -offset indent
+create table instructor(
+    ID         char(5),
+    name       varchar(20),
+    dept_name  varchar(20),
+    salary     numeric(8,2)
+)
+.Ed
+.Pp
+DDL compiler bikin "table template" yang disimpen di
+.Sy data dictionary .
+Data dictionary isinya metadata (data tentang data): schema,
+constraint, primary key, authorization.
+.It Sy DML (Data Manipulation Language)
+Buat akses dan manipulasi data. Terbagi dua:
+.Bl -bullet -offset indent
+.It
+.Sy Pure DML
+— relational algebra, tuple calculus. Buat teori dan optimasi.
+.It
+.Sy Commercial DML
+— SQL. Yang beneran dipakai sehari-hari.
+.El
+.El
+.Sy Catatan penting tentang SQL:
+SQL itu bukan Turing-complete. Artinya, kamu nggak bisa nulis
+program apapun pakai SQL doang. SQL cuma buat query data.
+Buat logika kompleks, SQL biasanya di-embed di bahasa lain
+(Java, Python, C), atau diakses lewat API kayak ODBC/JDBC.
+.Ss Bagian 8: Database Design
+Design itu proses nentuin struktur database. Ada dua bagian:
+.Bl -tag -width "Physical" -offset indent
+.It Sy Logical design
+Nentuin schema. Tabel apa aja, atribut apa aja, gimana
+distribusinya. Ini campuran keputusan bisnis ("data apa yang
+mau dicatat") dan keputusan CS ("gimana struktur tabelnya
+biar efisien").
+.It Sy Physical design
+Nentuin layout fisik di disk. Index apa, file organization
+gimana. Biasanya diurus DBA.
+.El
+.Sy Masalah yang sering muncul di design:
+Kalau kamu gabungin tabel instructor dan department jadi satu,
+kamu bakal punya tabel kayak gini:
+.Bd -literal -offset indent
+ID     name      salary  dept_name   building  budget
+22222  Einstein  95000   Physics     Watson    70000
+12121  Wu        90000   Finance     Painter   120000
+32343  El Said   60000   History     Painter   50000
+.Ed
+.Pp
+Lihat masalahnya? Budget Physics diulang tiap ada instructor
+dari Physics. Kalau budget berubah, harus update di semua
+baris. Ini namanya
+.Sy redundancy ,
+dan bikin
+.Sy update anomaly .
+.Pp
+Solusi: pisah balik jadi dua tabel. Ini yang disebut
+.Sy normalization .
+.Ss Bagian 9: Entity-Relationship dan Normalization
+Dua cara buat mastiin desain database kamu "bener":
+.Bl -tag -width "Normalization" -offset indent
+.It Sy Entity-Relationship (ER) Model
+Model enterprise sebagai kumpulan entity dan relationship.
+Digambar pakai diagram (ERD).
+.It Sy Normalization Theory
+Formalisasi apa yang bikin desain jelek, terus tes pakai
+aturan. Contoh: 1NF, 2NF, 3NF, BCNF.
+.El
+Kenapa perlu dua cara? Karena mereka approach dari sisi
+berbeda. ER itu top-down (dari kebutuhan bisnis). Normalization
+itu bottom-up (dari struktur tabel).
+.Ss Bagian 10: Object-Relational dan XML
+.Bl -tag -width "Object-Relational" -offset indent
+.It Sy Object-Relational Model
+Extend relational model dengan fitur object-oriented. Support
+tipe data kompleks (nested relations, array, struct). Tujuan:
+tetep punya foundation relational, tapi lebih powerful.
+.It Sy XML
+Extensible Markup Language. Dibikin W3C. Awalnya buat
+document markup, tapi ternyata bagus buat tukar data. Sekarang
+jadi basis semua format data interchange modern.
+.El
+.Ss Bagian 11: Komponen Database Engine
+Database engine punya 3 komponen utama:
+.Bl -tag -width "Transaction Manager" -offset indent
+.It Sy Storage Manager
+Interface antara data di disk sama aplikasi. Tugasnya:
+.Bl -bullet -offset indent
+.It
+Interaksi sama OS file manager
+.It
+Nyimpen, ngambil, update data secara efisien
+.It
+File organization
+.It
+Indexing dan hashing
+.El
+.It Sy Query Processor
+Ngolah query dari user. Ada 3 tahap:
+.Bl -enum -offset indent
+.It
+.Sy Parsing dan translation :
+ubah query jadi ekspresi relational algebra.
+.It
+.Sy Optimization :
+pilih cara paling efisien buat eksekusi.
+.It
+.Sy Evaluation :
+jalanin query, ambil hasil dari disk.
+.El
+.It Sy Transaction Manager
+Bikin database tetep konsisten walau ada:
+.Bl -bullet -offset indent
+.It
+System failure (mati listrik, OS crash)
+.It
+Transaction failure (query error di tengah jalan)
+.It
+Concurrent access (banyak user barengan)
+.El
+.El
+.Ss Bagian 12: Query Optimization
+.Sy Kenapa perlu?
+Karena satu query bisa dieksekusi dengan banyak cara. Bedanya
+bisa besar banget. Query yang sama bisa jalan 1 detik atau
+1 jam, tergantung eksekusi plan-nya.
+.Pp
+Contoh: "cari semua instructor yang gajinya > 50000".
+.Bl -bullet -offset indent
+.It
+Cara 1: baca semua baris, filter satu-satu. O(n).
+.It
+Cara 2: pakai index di kolom salary. O(log n).
+.El
+Database optimizer pilih cara 2. Tapi buat milih, dia butuh
+.Sy statistics
+— data statistik tentang tabel, kayak berapa baris, distribusi
+nilai, dst.
+.Pp
+Optimizer juga butuh estimasi cost untuk intermediate result
+(dataset sementara yang dibikin di tengah query). Ini yang
+bikin optimizer jadi kompleks.
+.Ss Bagian 13: Transaction Management
+.Sy Apa itu transaction?
+Kumpulan operasi yang jadi satu logical function. Contoh:
+transfer uang = kurangi saldo A + tambah saldo B. Dua operasi,
+tapi harus jadi satu unit.
+.Pp
+.Sy Kenapa penting?
+Kalau sistem mati setelah kurangi saldo A tapi sebelum nambah
+saldo B, uangnya hilang. Transaction management mastiin
+ini nggak terjadi.
+.Pp
+Empat prinsip utama:
+.Bl -tag -width "Concurrency Control" -offset indent
+.It Sy Atomicity
+Transaksi harus "selesai semua atau nggak sama sekali".
+.It Sy Consistency
+Setelah transaksi, database harus dalam state yang valid.
+.It Sy Isolation
+Transaksi yang jalan barengan nggak boleh saling ganggu.
+.It Sy Durability
+Setelah transaksi commit, perubahannya permanen, walau
+sistem crash.
+.El
+Ini disebut
+.Sy ACID properties .
+.Ss Bagian 14: User dan Administrator
+Ada beberapa tipe user database:
+.Bl -bullet -offset indent
+.It
+.Sy Naive users
+— pakai aplikasi, nggak tau ada database di belakangnya.
+Contoh: kamu pakai ATM.
+.It
+.Sy Application programmers
+— nulis program yang akses database. Contoh: developer
+backend.
+.It
+.Sy Sophisticated users
+— nulis query langsung ke DBMS. Contoh: data analyst.
+.It
+.Sy DBA (Database Administrator)
+— ngatur database: bikin user, atur akses, backup, tuning
+performa.
+.El
+.Ss Bagian 15: Arsitektur Database
+Arsitektur DBMS dipengaruhi oleh hardware di bawahnya:
+.Bl -tag -width "Distributed" -offset indent
+.It Sy Centralized
+Semua di satu mesin. Simpel, tapi nggak scalable.
+.It Sy Client-server
+Server database, client aplikasi. Yang paling umum.
+.It Sy Parallel
+Banyak processor di satu mesin. Buat query berat.
+.It Sy Distributed
+Database tersebar di banyak mesin/geografis. Contoh: database
+bank dengan cabang di banyak negara.
+.El
+.Ss Bagian 16: Sejarah Database
+.Bl -tag -width "Late 1960s" -offset indent
+.It Sy 1950s-1960s awal
+Data processing pakai magnetic tape. Akses sequential
+(harus baca dari awal). Input pakai punched cards.
+.It Sy Late 1960s-1970s
+Hard disk muncul. Bisa direct access. Model network dan
+hierarchical populer. Ted Codd bikin relational model
+(dapet Turing Award). IBM bikin System R, UC Berkeley
+bikin Ingres. Transaction processing high-performance
+buat zaman itu.
+.It Sy 1980s
+Prototype relational jadi produk komersial. SQL jadi
+standar industri. Parallel dan distributed database muncul.
+Object-oriented database muncul.
+.It Sy 1990s
+Decision support dan data mining. Data warehouse multi-
+terabyte. Web commerce muncul.
+.It Sy Early 2000s
+XML dan XQuery jadi standar. Automated database
+administration.
+.It Sy Later 2000s
+Giant data storage: Google BigTable, Yahoo PNuts, Amazon.
+Ini awal era NoSQL.
+.El
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep            Inti
+Database          Kumpulan data related + program akses
+DBMS              Software yang ngatur database
+Physical level    Gimana data disimpen di disk
+Logical level     Data apa yang disimpen + relasinya
+View level        Yang dilihat user/aplikasi
+Schema            Struktur database
+Instance          Isi database saat ini
+DDL               Bahasa define struktur (CREATE TABLE)
+DML               Bahasa manipulasi data (SELECT, INSERT)
+Data model        Cara ngeliat data (relational, ER, XML)
+Storage manager   Interface ke disk
+Query processor   Parse, optimize, evaluate query
+Transaction       Kumpulan operasi = satu logical function
+ACID              Atomicity, Consistency, Isolation, Durability
+DBA               Yang ngatur database
+.Ed
+.Pp
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy database itu bukan cuma tempat nyimpen data, tapi sistem
+yang mastiin data kamu tetap konsisten, aman, dan bisa diakses
+barengan.
+Sisanya cuma detail implementasi.
+.Pp
+Yang belum dijawab di sini: gimana caranya bikin query cepet
+di tabel dengan miliaran baris? Kenapa NoSQL muncul kalau
+relational udah bagus? Gimana caranya distributed database
+mastiin konsistensi antar node? Itu topik lanjutan. Kalau
+penasaran, cari sendiri. Itu cara belajar yang bener.
+.Sh SEE ALSO
+.Xr database-konsep 1 ,
+.Xr sql 1 ,
+.Xr postgres 1
+.Sh AUTHORS
+.An mroczect
