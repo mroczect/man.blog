@@ -1,0 +1,598 @@
+.Dd 2026-10-15 18:30:00
+.Dt RELATIONAL-MODEL 1
+.Os
+.Sh NAME
+.Nm relational-model
+.Nd model relational, dari tabel sampai relational algebra
+.Sh DESCRIPTION
+Ini catatan Chapter 2 dari buku Database System Concepts. Isinya:
+konsep relation, key, schema, dan relational algebra \(em bahasa
+formal yang jadi dasar SQL.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+relational algebra itu fondasi SQL. Kalau kamu paham algebra-nya,
+SQL cuma syntax. Kalau nggak, SQL cuma hafalan.
+.Ss Bagian 1: Relation Itu Apa?
+Relation = tabel. Simpelnya gitu. Tapi ada istilah formalnya:
+.Bd -literal -offset indent
+ID        name         dept_name    salary
+10101     Srinivasan   Comp. Sci.   65000
+12121     Wu           Finance      90000
+15151     Mozart       Music        40000
+22222     Einstein     Physics      95000
+32343     El Said      History      60000
+33456     Gold         Physics      87000
+45565     Katz         Comp. Sci.   75000
+58583     Califieri    History      62000
+76543     Singh        Finance      80000
+76766     Crick        Biology      72000
+83821     Brandt       Comp. Sci.   92000
+98345     Kim          Elec. Eng.   80000
+.Ed
+.Istilah:
+.Bl -tag -width "Attribute" -offset indent
+.It Sy Attribute
+Kolom. Contoh:
+.Sy ID ,
+.Sy name ,
+.Sy dept_name ,
+.Sy salary .
+.It Sy Tuple
+Baris. Satu tuple = satu record.
+.It Sy Relation
+Tabelnya sendiri. Kumpulan tuple.
+.It Sy Relation schema
+Nama tabel + daftar atributnya. Contoh:
+.Sy instructor(ID, name, dept_name, salary) .
+.It Sy Relation instance
+Isi tabel saat ini. Yang berubah tiap insert/delete/update.
+.El
+.Sy Kenapa perlu dibedain schema vs instance?
+Karena schema jarang berubah (kamu nggak ganti nama kolom tiap
+hari), tapi instance berubah terus. Analoginya kayak class vs
+object di OOP.
+.Ss Bagian 2: Domain dan Atomic Values
+.Sy Domain
+= himpunan nilai yang diizinkan buat suatu atribut.
+.Pp
+Contoh:
+.Bl -bullet -offset indent
+.It
+Domain
+.Sy salary
+= bilangan bulat positif
+.It
+Domain
+.Sy name
+= string
+.It
+Domain
+.Sy dept_name
+= daftar nama departemen yang valid
+.El
+.Sy Atomic values:
+Setiap nilai di relation harus atomic \(em artinya nggak bisa
+dipecah lagi. Contoh:
+.Bl -bullet -offset indent
+.It
+.Sy "Comp. Sci."
+itu atomic (satu string)
+.It
+Kalau kamu simpen
+.Sy "{Comp. Sci., Biology}"
+di satu kolom, itu nggak atomic. Salah.
+.It
+Kalau kamu simpen nomor telepon
+.Sy "081234567890"
+itu atomic (string), walau secara konsep bisa dipecah.
+.El
+.Sy Kenapa harus atomic?
+Karena relational model dibangun di atas teori himpunan. Kalau
+nilainya nggak atomic, operasi himpunan nggak bisa jalan.
+.Ss Bagian 3: Null
+Null = nilai khusus yang ada di semua domain.
+.Pp
+.Sy Artinya:
+.Bl -bullet -offset indent
+.It
+Nilainya nggak diketahui (unknown)
+.It
+Nilainya nggak ada (doesn't exist)
+.It
+Nilainya nggak applicable
+.El
+.Sy Kenapa null bikin masalah?
+Karena operasi aritmatika dengan null hasilnya null. Perbandingan
+dengan null hasilnya unknown (bukan true/false). SQL harus
+punya 3-valued logic buat handle ini.
+.Pp
+Contoh: kalau kamu query
+.Sy "salary > 80000" ,
+dosen yang salary-nya null bakal nggak muncul. Bukan karena
+salah, tapi karena hasilnya unknown, dan WHERE menganggap
+unknown sebagai false.
+.Ss Bagian 4: Formal Definition (Biar Paham)
+Secara formal:
+.Bd -literal -offset indent
+R = (A1, A2, ..., An)   <- relation schema
+
+r subset dari D1 x D2 x ... x Dn   <- relation instance
+
+r = { (a1, a2, ..., an) | ai element Di }
+.Ed
+.Keterangan:
+.Bl -bullet -offset indent
+.It
+.Sy Ai
+= nama atribut
+.It
+.Sy Di
+= domain atribut ke-i
+.It
+.Sy r
+= himpunan tuple
+.El
+.Sy Kenapa perlu tau definisi formal?
+Karena dari sini muncul konsep-konsep lain: superkey, candidate
+key, foreign key. Semua berasal dari definisi formal ini.
+.Ss Bagian 5: Urutan Tuple Nggak Penting
+Di relation, urutan tuple nggak ngaruh. Ini beda sama list di
+programming yang urutannya penting.
+.Bd -literal -offset indent
+Relation r:
+   (1, a)
+   (2, b)
+   (3, c)
+
+Relation r yang sama:
+   (3, c)
+   (1, a)
+   (2, b)
+.Ed
+.Sy Kenapa?
+Karena relation itu
+.Sy himpunan
+(set), bukan list. Di matematika, himpunan
+.Sy {1, 2, 3}
+sama dengan
+.Sy {3, 1, 2} .
+.Pp
+.Sy Implikasinya di SQL:
+Kalau kamu nggak pakai
+.Sy ORDER BY ,
+urutan hasil query nggak dijamin. Database boleh ngasih
+urutan apapun. Ini yang sering bikin bug di aplikasi yang
+mengandelin urutan tanpa ORDER BY.
+.Ss Bagian 6: Key \(em Cara Identifikasi Tuple
+.Sy Masalah:
+Kalau ada dua dosen dengan nama "Smith", gimana cara bedain
+mereka?
+.Sy Jawab:
+Pakai key.
+.Bl -tag -width "Candidate key" -offset indent
+.It Sy Superkey
+Himpunan atribut yang nilainya cukup buat identifikasi tuple
+secara unik. Contoh:
+.Sy {ID}
+dan
+.Sy {ID, name}
+dua-duanya superkey.
+.It Sy Candidate key
+Superkey yang
+.Sy minimal
+\(em artinya nggak ada subset-nya yang masih superkey. Contoh:
+.Sy {ID}
+candidate key, tapi
+.Sy {ID, name}
+bukan (karena buang
+.Sy name ,
+masih unik).
+.It Sy Primary key
+Satu dari candidate key yang dipilih jadi identitas resmi.
+.It Sy Foreign key
+Atribut di relation A yang nilainya harus muncul di primary
+key relation B.
+.El
+.Sy Contoh foreign key:
+.Bd -literal -offset indent
+instructor(ID, name, dept_name, salary)
+department(dept_name, building, budget)
+.Ed
+.Sy dept_name
+di
+.Sy instructor
+adalah foreign key yang refer ke
+.Sy department .
+Artinya: setiap nilai dept_name di instructor harus ada di
+tabel department. Kalau nggak ada, itu data invalid.
+.Pp
+.Sy Kenapa foreign key penting?
+Buat jaga integritas referensial. Kamu nggak bisa hapus
+departemen yang masih punya dosen. Kamu nggak bisa tambah
+dosen di departemen yang nggak ada.
+.Ss Bagian 7: Schema Diagram
+Database universitas punya banyak tabel yang saling terkait.
+Biar nggak bingung, digambar diagram:
+.Bd -literal -offset indent
+   takes                       student
+   +-------+                   +---------+
+   |ID     |------------------>|ID       |
+   |course_id|                 |name     |
+   |sec_id |                   |dept_name|
+   |semester|                  |tot_cred |
+   |year   |                   +---------+
+   |grade  |                       |
+   +-------+                       |
+       |                           |
+       v                           v
+   +-------+    +---------+    +-----------+
+   |section|--->|course   |<---|department |
+   +-------+    +---------+    +-----------+
+   |course_id|  |course_id|    |dept_name |
+   |sec_id |    |title    |    |building  |
+   |semester|   |dept_name|    |budget    |
+   |year   |    |credits  |    +-----------+
+   |building|   +---------+         ^
+   |room_no|        |               |
+   |time_slot_id|   |               |
+   +-------+        v               |
+                +---------+    +-----------+
+                |prereq   |    |instructor |
+                +---------+    +-----------+
+                |course_id|    |ID         |
+                |prereq_id|    |name       |
+                +---------+    |dept_name  |
+                               |salary     |
+                               +-----------+
+
+   +----------+    +-----------+
+   |classroom |    |time_slot  |
+   +----------+    +-----------+
+   |building  |    |time_slot_id|
+   |room_no   |    |day        |
+   |capacity  |    |start_time |
+   +----------+    |end_time   |
+                   +-----------+
+.Ed
+.Sy Cara baca:
+.Bl -bullet -offset indent
+.It
+Garis panah = foreign key
+.It
+Arah panah = dari yang refer ke yang direferensi
+.It
+Contoh:
+.Sy takes.ID
+refer ke
+.Sy student.ID ,
+dan
+.Sy takes.course_id
+refer ke
+.Sy course.course_id
+.El
+.Ss Bagian 8: Relational Algebra
+.Sy Apa itu?
+Bahasa formal buat operasi di relation. Ini yang jadi dasar SQL.
+.Pp
+.Sy Kenapa perlu belajar ini?
+Karena SQL itu implementasi dari relational algebra. Kalau kamu
+paham algebra-nya, kamu ngerti kenapa SQL query tertentu lebih
+cepet dari yang lain, dan kenapa optimizer memilih execution
+plan tertentu.
+.Pp
+.Sy Sifat:
+.Bl -bullet -offset indent
+.It
+Procedural, bukan declarative. Kamu bilang "gimana", bukan
+"apa".
+.It
+Turing-incomplete. Nggak bisa compute semua fungsi. Tapi cukup
+buat query data.
+.It
+Pure language. Nggak ada side effect.
+.El
+.Sy 6 operasi dasar:
+.Bl -tag -width "Cartesian product" -offset indent
+.It Sy Selection ( \(*s )
+.It Sy Projection ( \(*P )
+.It Sy Union ( \(cu )
+.It Sy Set difference ( \(mi )
+.It Sy Cartesian product ( \(mu )
+.It Sy Rename ( \(*r )
+.El
+Plus operasi turunan: intersection, join, division.
+.Ss Bagian 8.1: Selection ( \(*s )
+.Sy Fungsi:
+Filter baris berdasarkan kondisi.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+sigma_{condition}(relation)
+.Ed
+Contoh:
+.Bd -literal -offset indent
+sigma_{A=B and D>5}(r)
+.Ed
+.Sy Contoh konkret:
+.Bd -literal -offset indent
+sigma_{salary >= 85000}(instructor)
+.Ed
+Ambil semua dosen dengan gaji \(>= 85000.
+.Pp
+.Sy Equivalent di SQL:
+.Bd -literal -offset indent
+select * from instructor where salary >= 85000
+.Ed
+.Ss Bagian 8.2: Projection ( \(*P )
+.Sy Fungsi:
+Ambil kolom tertentu aja. Buang kolom lain.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+pi_{A, C}(r)
+.Ed
+Contoh:
+.Bd -literal -offset indent
+pi_{name, salary}(instructor)
+.Ed
+Ambil nama dan gaji aja.
+.Pp
+.Sy Otomatis hapus duplikat:
+Karena hasilnya relation (set), duplikat dihapus. Kalau kamu
+project kolom yang banyak duplikatnya, hasilnya jadi lebih
+sedikit baris.
+.Pp
+.Sy Equivalent di SQL:
+.Bd -literal -offset indent
+select distinct name, salary from instructor
+.Ed
+.Sy Kenapa distinct?
+Karena relational algebra projection selalu hapus duplikat.
+Di SQL, kamu harus explicit pakai
+.Sy distinct
+kalau mau efek yang sama.
+.Ss Bagian 8.3: Union ( \(cu )
+.Sy Fungsi:
+Gabung dua relation.
+.Pp
+.Sy Syarat:
+Kedua relation harus punya
+.Sy arity
+(jumlah atribut) yang sama, dan domain atributnya kompatibel.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+r union s
+.Ed
+Contoh:
+.Bd -literal -offset indent
+pi_{name}(instructor) union pi_{name}(student)
+.Ed
+Nama semua dosen dan mahasiswa (tanpa duplikat).
+.Pp
+.Sy Equivalent di SQL:
+.Bd -literal -offset indent
+(select name from instructor)
+union
+(select name from student)
+.Ed
+.Ss Bagian 8.4: Set Difference ( \(mi )
+.Sy Fungsi:
+Ambil yang ada di A tapi nggak ada di B.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+r - s
+.Ed
+Contoh:
+.Bd -literal -offset indent
+pi_{name}(instructor) - pi_{name}(student)
+.Ed
+Nama yang ada di instructor tapi nggak ada di student.
+.Pp
+.Sy Syarat:
+Sama kayak union: arity sama, domain kompatibel.
+.Pp
+.Sy Equivalent di SQL:
+.Bd -literal -offset indent
+(select name from instructor)
+except
+(select name from student)
+.Ed
+.Ss Bagian 8.5: Cartesian Product ( \(mu )
+.Sy Fungsi:
+Gabung setiap tuple di A dengan setiap tuple di B.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+r times s
+.Ed
+.Sy Contoh:
+Kalau r punya 2 tuple dan s punya 3 tuple, hasilnya 2 \(mu 3 = 6
+tuple.
+.Bd -literal -offset indent
+r:               s:                r x s:
+A  B             C  D  E           A  B  C  D  E
+a  1             a  10 a           a  1  a  10 a
+b  2             b  10 a           a  1  b  10 a
+                 b  20 b           a  1  b  20 b
+                 g  10 b           a  1  g  10 b
+                                   b  2  a  10 a
+                                   b  2  b  10 a
+                                   b  2  b  20 b
+                                   b  2  g  10 b
+.Ed
+.Sy Masalah naming:
+Kalau atribut punya nama sama (misal B di r dan B di s),
+harus di-prefix pakai nama relation:
+.Sy r.B
+dan
+.Sy s.B .
+.Pp
+.Sy Equivalent di SQL:
+.Bd -literal -offset indent
+select * from r, s
+.Ed
+.Ss Bagian 8.6: Rename ( \(sr )
+.Sy Fungsi:
+Kasih nama baru ke relation. Biar bisa refer ke relation yang
+sama lebih dari sekali.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+rho_{x}(E)
+.Ed
+Return expression E dengan nama X.
+.Pp
+.Sy Contoh penggunaan:
+Self-join. Cari dosen yang gajinya lebih tinggi dari dosen
+lain.
+.Bd -literal -offset indent
+pi_{T.name}(
+    sigma_{T.salary > S.salary and S.dept_name = 'Comp. Sci.'}(
+        rho_{T}(instructor) times rho_{S}(instructor)
+    )
+)
+.Ed
+Tanpa rename, kita nggak bisa bedain dua "instructor".
+.Ss Bagian 8.7: Intersection ( \(ca )
+.Sy Fungsi:
+Ambil yang ada di A
+.Sy dan
+B.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+r intersection s
+.Ed
+.Sy Bisa dibangun dari set difference:
+.Bd -literal -offset indent
+r intersection s = r - (r - s)
+.Ed
+.Sy Kenapa didefinisiin kayak gitu?
+Karena intersection bukan operasi dasar. Dia bisa diturunin
+dari set difference. Tapi SQL tetap support
+.Sy intersect
+biar ringkas.
+.Ss Bagian 8.8: Natural Join ( \(ib )
+.Sy Fungsi:
+Gabung dua relation, tapi otomatis match atribut yang namanya
+sama.
+.Pp
+.Sy Notasi:
+.Bd -literal -offset indent
+r natural-join s
+.Ed
+.Sy Cara kerja:
+.Bl -enum -offset indent
+.It
+Cari atribut yang namanya sama di r dan s (misal B, D).
+.It
+Buat pasangan tuple (tr, ts) yang nilainya sama di atribut
+yang sama.
+.It
+Hasilnya: gabungan tuple, tapi atribut yang sama cuma muncul
+sekali.
+.El
+.Sy Contoh:
+.Bd -literal -offset indent
+r:                    s:
+A  B  C  D            B  D  E
+a  1  a  a            1  a  a
+b  2  g  a            3  a  b
+g  4  b  b            1  a  g
+a  1  g  a            2  b  d
+d  2  b  b            3  b  e
+
+r natural-join s:
+A  B  C  D  E
+a  1  a  a  a
+a  1  a  a  g
+a  1  g  a  a
+a  1  g  a  g
+d  2  b  b  d
+.Ed
+.Sy Kenapa natural join berguna?
+Karena join yang paling sering dipakai adalah equi-join di
+atribut yang namanya sama. Natural join bikin query lebih
+ringkas.
+.Pp
+.Sy Equivalent formal:
+.Bd -literal -offset indent
+r natural-join s = pi_{...}(sigma_{r.B=s.B and r.D=s.D}(r times s))
+.Ed
+.Ss Bagian 9: Query Itu Selalu Relation
+Setiap query input = tabel. Setiap query output = tabel. Semua
+data di output ada di salah satu input.
+.Pp
+.Sy Kenapa penting?
+Karena dari sini muncul konsep
+.Sy compositional \(em
+output query bisa jadi input query lain. Ini yang bikin
+relational algebra powerful: kamu bisa compose operasi
+sederhana jadi query kompleks.
+.Ss Bagian 10: Relational Algebra vs SQL
+.Bd -literal -offset indent
+Algebra           SQL
+sigma (select)    WHERE
+pi (project)      SELECT (with DISTINCT)
+union             UNION
+- (difference)    EXCEPT
+times (product)   FROM (comma)
+natural-join      JOIN ... ON / NATURAL JOIN
+rho (rename)      AS
+intersection      INTERSECT
+.Ed
+.Sy Relational algebra nggak Turing-complete.
+Artinya, kamu nggak bisa compute semua fungsi pakai algebra
+doang. Contoh: kamu nggak bisa compute
+.Sy sum ,
+.Sy avg ,
+.Sy max
+cuma pakai 6 operasi dasar. Butuh aggregate function.
+.Pp
+.Sy Tapi SQL bisa compute aggregate.
+Karena SQL punya extension (GROUP BY, aggregate functions)
+yang nggak ada di relational algebra murni. Jadi SQL lebih
+powerful dari relational algebra.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                Inti
+Relation              Tabel (set of tuples)
+Attribute             Kolom
+Tuple                 Baris
+Domain                Himpunan nilai yang valid
+Null                  Nilai unknown
+Relation schema       Struktur tabel
+Relation instance     Isi tabel saat ini
+Superkey              Atribut yang unik
+Candidate key         Superkey minimal
+Primary key           Candidate key yang dipilih
+Foreign key           Refer ke primary key tabel lain
+Selection (sigma)     Filter baris
+Projection (pi)       Filter kolom
+Union                 Gabung himpunan
+Set difference        Kurangi himpunan
+Cartesian product     Semua kombinasi
+Rename (rho)          Kasih nama
+Intersection          Irisan himpunan
+Natural join          Join otomatis di atribut sama
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy relational algebra itu fondasi SQL.
+Setiap SQL query, sekompleks apapun, bisa diterjemahin balik
+jadi rangkaian operasi relational algebra. Itu kenapa database
+bisa nge-optimize query kamu tanpa kamu harus bilang "gimana"
+caranya.
+.Pp
+Yang belum dijawab di sini: gimana caranya relational algebra
+bisa dioptimize? Kenapa natural join kadang lebih cepet dari
+cartesian product + selection? Kapan pakai index? Itu topik
+lanjutan: query optimization dan indexing. Kalau penasaran,
+cari sendiri. Itu cara belajar yang bener.
+.Sh SEE ALSO
+.Xr database-intro 1 ,
+.Xr sql-intro 1 ,
+.Xr database-konsep 1
+.Sh AUTHORS
+.An mroczect
