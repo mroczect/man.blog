@@ -26,10 +26,38 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y mandoc bsdextrautils
 
+      - name: Verify environment
+        run: |
+          echo "--- tools ---"
+          bash --version | head -n1
+          mandoc -V 2>&1 | head -n1 || true
+          awk --version 2>&1 | head -n1 || awk -W version 2>&1 | head -n1 || true
+          date --version | head -n1
+          sha512sum --version | head -n1
+          echo "--- files ---"
+          ls -la
+          [ -f build.sh ] || { echo "::error::build.sh tidak ditemukan di root repo"; exit 1; }
+          [ -f man.css ]  || { echo "::error::man.css tidak ditemukan di root repo";  exit 1; }
+          [ -d posts ]    || { echo "::error::folder posts/ tidak ditemukan";         exit 1; }
+          if [ ! -f assets/favicon.png ]; then
+            echo "::warning file=assets/favicon.png::assets/favicon.png tidak ada, favicon akan dilewati. Commit file-nya supaya muncul di halaman."
+          else
+            file assets/favicon.png
+          fi
+
       - name: Build
         run: |
           chmod +x build.sh
-          ./build.sh
+          bash build.sh
+
+      - name: Verify output
+        run: |
+          test -f public/index.html || { echo "::error::public/index.html tidak dihasilkan"; exit 1; }
+          test -f public/.nojekyll  || { echo "::warning::.nojekyll tidak ada"; }
+          echo "--- struktur public/ ---"
+          find public -maxdepth 3 -type f | sort
+          echo "--- cek favicon di index.html ---"
+          grep -F 'rel="icon"' public/index.html || echo "::warning::favicon tidak ter-inject di index.html"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
