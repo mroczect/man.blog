@@ -1,0 +1,508 @@
+.Dd 2026-10-15 20:00:00
+.Dt TRANSACTIONS 1
+.Os
+.Sh NAME
+.Nm transactions
+.Nd konsep transaction, ACID, dan serializability
+.Sh DESCRIPTION
+Ini catatan Chapter 14 dari buku Database System Concepts. Isinya:
+konsep transaction, state, concurrent execution, serializability,
+recoverability, implementation of isolation, transaction definition
+in SQL, dan testing for serializability.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+transaction itu fondasi database yang bener. Kalau kamu nggak
+paham transaction, kamu nggak paham kenapa database bisa
+diandelin buat duit.
+.Ss Bagian 1: Kenapa Perlu Transaction?
+.Sy Contoh klasik:
+Transfer $50 dari rekening A ke rekening B.
+.Bd -literal -offset indent
+1. read(A)
+2. A := A - 50
+3. write(A)
+4. read(B)
+5. B := B + 50
+6. write(B)
+.Ed
+.Sy Masalah:
+Kalau sistem crash setelah step 3 tapi sebelum step 6, uangnya
+"hilang". A udah dikurangi 50, tapi B belum ditambah 50.
+.Pp
+.Sy Solusi:
+Transaction. Kumpulan operasi yang harus jalan sebagai satu
+kesatuan.
+.Ss Bagian 2: ACID Properties
+Empat properti yang harus dipenuhi transaction:
+.Bl -tag -width "Durability" -offset indent
+.It Sy Atomicity
+Entah semua operasi ke-reflect di database, atau nggak sama
+sekali. Kalau gagal di tengah, harus di-rollback.
+.It Sy Consistency
+Eksekusi transaction in isolation preserve konsistensi database.
+Contoh: sum(A+B) nggak berubah.
+.It Sy Isolation
+Walau multiple transaction jalan concurrently, tiap transaction
+harus unaware sama transaction lain. Intermediate result harus
+hidden.
+.It Sy Durability
+Setelah transaction commit, perubahannya persist, walau ada
+system failure.
+.El
+.Ss Bagian 2.1: Atomicity dan Durability
+.Sy Atomicity:
+Kalau transaction gagal setelah step 3 tapi sebelum step 6,
+sistem harus mastiin update partial nggak ke-reflect.
+.Pp
+.Sy Durability:
+Setelah user dikasih tau transaction selesai, update harus
+persist walau software atau hardware failure.
+.Ss Bagian 2.2: Consistency
+.Sy Contoh:
+Sum A dan B nggak berubah oleh eksekusi transaction.
+.Pp
+.Sy Consistency requirement:
+.Bl -bullet -offset indent
+.It
+Explicit integrity constraint: primary key, foreign key.
+.It
+Implicit integrity constraint: sum of balances = cash-in-hand.
+.El
+.Sy Aturan:
+.Bl -bullet -offset indent
+.It
+Transaction, saat mulai, must see consistent database.
+.It
+Selama eksekusi, database boleh temporarily inconsistent.
+.It
+Saat transaction complete, database must be consistent.
+.El
+.Sy Erroneous transaction logic
+bisa bikin inconsistency. Transaction management nggak bisa
+detect ini.
+.Ss Bagian 2.3: Isolation
+.Sy Masalah:
+Kalau antara step 3 dan 6, transaction T2 access database yang
+partially updated, dia bakal lihat sum A+B yang salah.
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+T1                T2
+read(A)
+A := A - 50
+write(A)
+                  read(A), read(B), print(A+B)
+read(B)
+B := B + 50
+write(B)
+.Ed
+.Sy T2
+lihat state inconsistent.
+.Pp
+.Sy Solusi:
+Isolation. Transaction jalan serially (satu per satu). Tapi
+ini bikin concurrency rendah.
+.Ss Bagian 3: Transaction State
+Transaction punya 5 state:
+.Bd -literal -offset indent
+              +------------------+
+              |                  |
+              v                  |
+    +---------+--------+         |
+    |      active      |         |
+    +---------+--------+         |
+              |                  |
+              v                  |
+    +---------+--------+         |
+    | partially        |         |
+    | committed        |         |
+    +---------+--------+         |
+              |                  |
+              v                  |
+    +---------+--------+         |
+    |    committed     |         |
+    +------------------+         |
+                                 |
+    +------------------+         |
+    |      failed      |---------+
+    +---------+--------+
+              |
+              v
+    +------------------+
+    |     aborted      |
+    +------------------+
+.Ed
+.Bl -tag -width "Partially committed" -offset indent
+.It Sy Active
+State awal. Transaction executing.
+.It Sy Partially committed
+Setelah final statement executed.
+.It Sy Failed
+Setelah ketemu bahwa normal execution nggak bisa lanjut.
+.It Sy Aborted
+Setelah transaction di-rollback dan database di-restore ke
+state sebelumnya. Dua opsi:
+.Bl -bullet -offset indent
+.It
+Restart transaction (kalau nggak ada logical error).
+.It
+Kill transaction.
+.El
+.It Sy Committed
+Setelah successful completion.
+.El
+.Ss Bagian 4: Concurrent Executions
+.Sy Kenapa perlu concurrent?
+.Bl -tag -width "Better throughput" -offset indent
+.It Sy Increased throughput
+Satu transaction pakai CPU sementara yang lain baca/tulis disk.
+.It Sy Reduced response time
+Short transaction nggak perlu nunggu long transaction.
+.El
+.Sy Concurrency control schemes:
+Mekanisme buat achieve isolation. Ngatur interaksi antar
+concurrent transaction.
+.Ss Bagian 5: Schedule
+.Sy Schedule
+= sequence of instruction yang specify chronological order di
+mana instruction of concurrent transaction dieksekusi.
+.Pp
+.Sy Syarat:
+.Bl -bullet -offset indent
+.It
+Harus consist of all instruction of those transactions.
+.It
+Harus preserve order di mana instruction muncul di tiap
+transaction.
+.El
+.Sy Transaction yang sukses:
+Punya commit instruction sebagai last statement.
+.Sy Transaction yang gagal:
+Punya abort instruction sebagai last statement.
+.Ss Bagian 5.1: Serial Schedule
+.Sy Contoh:
+T1 transfer $50 dari A ke B.
+T2 transfer 10% balance dari A ke B.
+.Pp
+.Sy Serial schedule (T1 dulu, baru T2):
+.Bd -literal -offset indent
+T1                  T2
+read(A)
+A := A - 50
+write(A)
+read(B)
+B := B + 50
+write(B)
+commit
+                    read(A)
+                    temp := A * 0.1
+                    A := A - temp
+                    write(A)
+                    read(B)
+                    B := B + temp
+                    write(B)
+                    commit
+.Ed
+.Sy Serial schedule (T2 dulu, baru T1):
+Sama, tapi order-nya kebalik.
+.Ss Bagian 5.2: Concurrent Schedule
+.Sy Schedule yang equivalent dengan serial:
+.Bd -literal -offset indent
+T1                  T2
+read(A)
+A := A - 50
+write(A)
+                    read(A)
+                    temp := A * 0.1
+                    A := A - temp
+                    write(A)
+read(B)
+B := B + 50
+write(B)
+commit
+                    read(B)
+                    B := B + temp
+                    write(B)
+                    commit
+.Ed
+.Sy Schedule yang TIDAK preserve sum A+B:
+.Bd -literal -offset indent
+T1                  T2
+read(A)
+A := A - 50
+                    read(A)
+                    temp := A * 0.1
+                    A := A - temp
+                    write(A)
+                    read(B)
+write(A)
+read(B)
+B := B + 50
+write(B)
+commit
+                    B := B + temp
+                    write(B)
+                    commit
+.Ed
+.Ss Bagian 6: Serializability
+.Sy Basic assumption:
+Tiap transaction preserve database consistency.
+.Pp
+.Sy Serial execution
+of set of transaction preserve database consistency.
+.Pp
+.Sy Schedule
+(possibly concurrent) serializable kalau equivalent dengan
+serial schedule.
+.Pp
+.Sy Dua bentuk equivalence:
+.Bl -enun -offset indent
+.It
+Conflict serializability.
+.It
+View serializability.
+.El
+.Ss Bagian 6.1: Conflict Serializability
+.Sy Kita ignore operations selain read dan write.
+.Pp
+.Sy Conflict:
+Dua instruction
+.Sy l_i
+dan
+.Sy l_j
+dari transaction
+.Sy T_i
+dan
+.Sy T_j
+conflict kalau ada item Q yang diakses oleh keduanya, dan
+minimal satu write Q.
+.Bl -enun -offset indent
+.It
+.Sy read(Q), read(Q) :
+nggak conflict.
+.It
+.Sy read(Q), write(Q) :
+conflict.
+.It
+.Sy write(Q), read(Q) :
+conflict.
+.It
+.Sy write(Q), write(Q) :
+conflict.
+.El
+.Sy Intuisi:
+Conflict antara
+.Sy l_i
+dan
+.Sy l_j
+forces logical temporal order.
+.Ss Bagian 6.2: Conflict Equivalent
+.Sy Schedule S
+bisa ditransform jadi
+.Sy S'
+dengan series of swaps of non-conflicting instruction, maka
+S dan S' conflict equivalent.
+.Sy Schedule S
+conflict serializable kalau conflict equivalent ke serial
+schedule.
+.Ss Bagian 6.3: Precedence Graph
+.Sy Definisi:
+Directed graph dengan vertex = transaction.
+.Pp
+.Sy Arc
+dari
+.Sy T_i
+ke
+.Sy T_j
+kalau dua transaction conflict, dan
+.Sy T_i
+accessed data item yang conflict duluan.
+.Pp
+.Sy Theorem:
+Schedule conflict serializable jika dan hanya jika precedence
+graph-nya acyclic.
+.Pp
+.Sy Cycle detection:
+O(n^2) atau O(n+e).
+.Pp
+.Sy Kalau acyclic:
+Serializability order didapat dari topological sorting.
+.Ss Bagian 6.4: View Serializability
+.Sy Definisi:
+Dua schedule S dan S' view equivalent kalau:
+.Bl -enun -offset indent
+.It
+Kalau di S, T_i reads initial value of Q, maka di S' juga.
+.It
+Kalau di S, T_i reads value yang diproduksi T_j, maka di S'
+juga.
+.It
+Transaction yang performs final write(Q) di S harus juga di S'.
+.El
+.Sy Schedule S
+view serializable kalau view equivalent ke serial schedule.
+.Pp
+.Sy Setiap conflict serializable
+juga view serializable.
+.Sy Tapi nggak sebaliknya.
+.Pp
+.Sy Contoh view serializable tapi bukan conflict serializable:
+.Bd -literal -offset indent
+T27      T28      T29
+read(Q)
+         write(Q)
+                  write(Q)
+write(Q)
+.Ed
+.Sy Ini punya blind writes.
+.Pp
+.Sy Testing view serializability:
+NP-complete. Nggak ada efficient algorithm.
+.Ss Bagian 7: Recoverability
+.Ss Bagian 7.1: Recoverable Schedule
+.Sy Definisi:
+Kalau T_j reads data item yang sebelumnya ditulis T_i, maka
+commit operation T_i harus muncul sebelum commit operation T_j.
+.Pp
+.Sy Contoh yang NOT recoverable:
+.Bd -literal -offset indent
+T8            T9
+read(A)
+write(A)
+              read(A)
+              commit
+read(B)
+.Ed
+.Sy Kalau T8 abort:
+T9 udah baca (dan mungkin nunjukin ke user) state inconsistent.
+.Ss Bagian 7.2: Cascading Rollback
+.Sy Definisi:
+Single transaction failure leads to series of transaction
+rollback.
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+T10            T11            T12
+read(A)
+               read(B)
+write(A)
+               abort
+                              read(A)
+                              read(A)
+.Ed
+.Sy Kalau T10 fails:
+T11 dan T12 harus di-rollback. Ini yang disebut cascading
+rollback.
+.Ss Bagian 7.3: Cascadeless Schedule
+.Sy Definisi:
+Buat tiap pair T_i dan T_j di mana T_j reads data item yang
+sebelumnya ditulis T_i, commit operation T_i muncul sebelum
+read operation T_j.
+.Pp
+.Sy Setiap cascadeless
+juga recoverable.
+.Sy Tapi nggak sebaliknya.
+.Ss Bagian 8: Concurrency Control
+.Sy Database harus provide mechanism
+yang mastiin semua schedule:
+.Bl -bullet -offset indent
+.It
+Conflict serializable.
+.It
+Recoverable, preferably cascadeless.
+.El
+.Sy Policy "one transaction at a time":
+Generate serial schedule, tapi poor concurrency.
+.Pp
+.Sy Concurrency-control schemes:
+Trade-off antara amount of concurrency dan overhead.
+.Pp
+.Sy Testing schedule after execution:
+Terlalu telat. Tests for serializability bantu kita ngerti
+kenapa protocol bener.
+.Ss Bagian 9: Weak Levels of Consistency
+.Sy Beberapa aplikasi
+willing buat weak consistency, allow schedule yang nggak
+serializable.
+.Bl -bullet -offset indent
+.It
+Read-only transaction yang mau approximate total balance.
+.It
+Database statistics buat query optimization.
+.El
+.Sy Trade-off:
+Accuracy vs performance.
+.Ss Bagian 9.1: Level of Consistency SQL-92
+.Bl -tag -width "Read uncommitted" -offset indent
+.It Sy Serializable
+Default. Full isolation.
+.It Sy Repeatable read
+Cuma committed records yang dibaca. Repeated reads sama.
+Tapi mungkin nggak serializable.
+.It Sy Read committed
+Cuma committed records, tapi successive reads bisa beda.
+.It Sy Read uncommitted
+Bahkan uncommitted records bisa dibaca.
+.El
+.Sy Warning:
+Beberapa database nggak ensure serializable by default.
+Oracle dan PostgreSQL by default support "snapshot isolation".
+.Ss Bagian 10: Transaction Definition di SQL
+.Sy Transaction begin implicitly.
+.Pp
+.Sy Transaction ends by:
+.Bl -tag -width "COMMIT WORK" -offset indent
+.It Sy COMMIT WORK
+Commit current transaction, begin new one.
+.It Sy ROLLBACK WORK
+Cause current transaction to abort.
+.El
+.Sy Default di hampir semua database:
+Setiap SQL statement commits implicitly kalau execute
+successfully.
+.Sy Implicit commit bisa di-turn off:
+Contoh di JDBC:
+.Bd -literal -offset indent
+connection.setAutoCommit(false);
+.Ed
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep              Inti
+Transaction         Unit of program execution
+ACID                Atomicity, Consistency, Isolation, Durability
+Atomicity           All or nothing
+Consistency         Preserve consistency
+Isolation           Unaware of others
+Durability          Persist after commit
+Transaction state   active, partially committed, failed,
+                    aborted, committed
+Schedule            Sequence of instructions
+Serial schedule     Transactions one after another
+Serializability      Equivalent to serial schedule
+Conflict            read/write dari item yang sama
+Conflict serializable  Equivalent via swap non-conflict
+Precedence graph    Directed graph transaksi
+Recoverable         Commit T_i sebelum commit T_j
+Cascading rollback  One failure -> multiple rollback
+Cascadeless         Commit T_i sebelum read T_j
+Weak consistency    Trade-off accuracy
+SQL isolation level Serializable, repeatable read,
+                    read committed, read uncommitted
+SQL transaction     COMMIT WORK, ROLLBACK WORK
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy transaction itu bukan cuma soal "commit" atau "rollback".
+Dia soal jaminan bahwa database tetap konsisten walau ada
+failure, concurrent access, atau error. ACID itu janji
+database ke kamu. Kalau database nggak bisa jaga janji itu,
+jangan pakai buat simpen duit.
+.Pp
+Yang belum dijawab di sini: gimana caranya implement isolation
+tanpa bikin concurrency rendah? Kapan pakai locking, kapan
+pakai timestamp? Itu topik Chapter 15: Concurrency Control.
+.Sh SEE ALSO
+.Xr concurrency 1 ,
+.Xr query-processing 1 ,
+.Xr database-intro 1
+.Sh AUTHORS
+.An mroczect
