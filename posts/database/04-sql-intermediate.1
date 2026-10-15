@@ -1,0 +1,735 @@
+.Dd 2026-10-15 18:30:00
+.Dt SQL-INTERMEDIATE 1
+.Os
+.Sh NAME
+.Nm sql-intermediate
+.Nd SQL tingkat menengah, dari join sampai authorization
+.Sh DESCRIPTION
+Ini catatan Chapter 4 dari buku Database System Concepts. Isinya:
+join expressions, views, transactions, integrity constraints, tipe
+data SQL, dan authorization.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena kalau
+cuma hafal syntax, kamu bakal bingung kapan pakai apa.
+.Ss Bagian 1: Join Expressions
+.Sy Join itu apa?
+Operasi yang menggabungkan dua relation, hasilnya relation baru.
+Secara fundamental, join itu Cartesian product yang cuma ambil
+pasangan tuple yang match.
+.Pp
+.Sy Kenapa perlu join?
+Karena di database, data disebar ke banyak tabel biar nggak
+redundan. Tapi pas mau baca data lengkap, kamu harus gabungin
+balik. Itu kerjaan join.
+.Pp
+Contoh: relation
+.Sy course
+dan
+.Sy prereq .
+.Bd -literal -offset indent
+course:
+course_id  title         dept_name    credits
+BIO-301    Genetics      Biology      4
+CS-190     Game Design   Comp. Sci.   4
+CS-315     Robotics      Comp. Sci.   3
+
+prereq:
+course_id  prereq_id
+BIO-301    BIO-101
+CS-190     CS-101
+CS-347     CS-101
+.Ed
+Perhatikan:
+.Bl -bullet -offset indent
+.It
+.Sy CS-315
+nggak punya prereq.
+.It
+.Sy CS-437
+ada di prereq, tapi nggak ada di course.
+.El
+Ini yang disebut
+.Sy dangling tuple
+\(em tuple yang nggak punya pasangan di tabel lain. Kalau kita
+pakai inner join, tuple ini bakal hilang. Kalau pakai outer join,
+tuple ini tetap muncul, dengan nilai NULL di kolom yang nggak ada
+pasangannya.
+.Ss Bagian 1.1: Inner Join
+Join yang cuma ambil pasangan yang match.
+.Bd -literal -offset indent
+course inner join prereq
+    on course.course_id = prereq.course_id
+.Ed
+Hasilnya:
+.Bd -literal -offset indent
+course_id  title         dept_name    credits  prereq_id  course_id
+BIO-301    Genetics      Biology      4        BIO-101    BIO-301
+CS-190     Game Design   Comp. Sci.   4        CS-101     CS-190
+.Ed
+.Sy Kenapa CS-315 dan CS-347 nggak muncul?
+Karena:
+.Bl -bullet -offset indent
+.It
+CS-315 nggak punya prereq.
+.It
+CS-347 nggak ada di tabel course.
+.El
+Inner join cuma ambil yang match di kedua sisi.
+.Ss Bagian 1.2: Natural Join
+Join yang otomatis match atribut yang namanya sama.
+.Bd -literal -offset indent
+course natural join prereq
+.Ed
+Hasilnya sama kayak inner join, tapi kolom yang sama (course_id)
+cuma muncul sekali.
+.Pp
+.Sy Bedanya sama inner join on?
+.Bl -bullet -offset indent
+.It
+.Sy Natural join
+: cari sendiri atribut yang namanya sama.
+.It
+.Sy Inner join on
+: kamu specify sendiri kondisinya.
+.El
+Natural join lebih ringkas, tapi berbahaya kalau ada atribut yang
+kebetulan namanya sama tapi artinya beda.
+.Ss Bagian 1.3: Left Outer Join
+Inner join + tuple dari kiri yang nggak match, diisi NULL.
+.Bd -literal -offset indent
+course natural left outer join prereq
+.Ed
+Hasilnya:
+.Bd -literal -offset indent
+course_id  title         dept_name    credits  prereq_id
+BIO-301    Genetics      Biology      4        BIO-101
+CS-190     Game Design   Comp. Sci.   4        CS-101
+CS-315     Robotics      Comp. Sci.   3        null
+.Ed
+.Sy Kenapa CS-315 muncul?
+Karena dia ada di tabel kiri (course), tapi nggak punya pasangan
+di tabel kanan (prereq). Di left outer join, tuple kiri yang
+nggak match tetap muncul, dengan NULL di kolom kanan.
+.Ss Bagian 1.4: Right Outer Join
+Kebalikannya: tuple dari kanan yang nggak match tetap muncul.
+.Bd -literal -offset indent
+course natural right outer join prereq
+.Ed
+Hasilnya:
+.Bd -literal -offset indent
+course_id  title         dept_name    credits  prereq_id
+BIO-301    Genetics      Biology      4        BIO-101
+CS-190     Game Design   Comp. Sci.   4        CS-101
+CS-347    null          null         null     CS-101
+.Ed
+.Sy Kenapa CS-347 muncul?
+Karena dia ada di tabel kanan (prereq), tapi nggak ada di tabel
+kiri (course). Di right outer join, tuple kanan yang nggak match
+tetap muncul, dengan NULL di kolom kiri.
+.Ss Bagian 1.5: Full Outer Join
+Gabungan left dan right: semua tuple dari kedua sisi tetap muncul,
+yang nggak match diisi NULL.
+.Bd -literal -offset indent
+course natural full outer join prereq
+.Ed
+Hasilnya:
+.Bd -literal -offset indent
+course_id  title         dept_name    credits  prereq_id
+BIO-301    Genetics      Biology      4        BIO-101
+CS-190     Game Design   Comp. Sci.   4        CS-101
+CS-315     Robotics      Comp. Sci.   3        null
+CS-347     null          null         null     CS-101
+.Ed
+.Ss Bagian 1.6: Join Conditions
+Selain
+.Sy natural ,
+ada dua cara lain buat specify kondisi join:
+.Bl -tag -width "using" -offset indent
+.It Sy on <predicate>
+Specify kondisi secara eksplisit.
+.Bd -literal -offset indent
+course inner join prereq on course.course_id = prereq.course_id
+.Ed
+.It Sy using (A1, A2, ...)
+Specify atribut yang dipakai buat match. Lebih ringkas dari
+.Sy on
+kalau atributnya banyak.
+.Bd -literal -offset indent
+course full outer join prereq using (course_id)
+.Ed
+.El
+.Sy Bedanya natural vs using?
+.Bl -bullet -offset indent
+.It
+.Sy natural
+: otomatis pakai semua atribut yang namanya sama.
+.It
+.Sy using
+: kamu specify atribut mana yang dipakai.
+.El
+.Sy using
+lebih aman karena kamu eksplisit.
+.Ss Bagian 2: Views
+.Sy View itu apa?
+"Virtual relation" yang didefinisiin dari query. Datanya sebenernya
+nggak disimpan, tapi bisa di-query kayak tabel biasa.
+.Pp
+.Sy Kenapa perlu view?
+Karena nggak semua user boleh lihat semua data. Contoh: staff
+administrasi perlu tau nama dan departemen dosen, tapi nggak
+boleh lihat gaji. Daripada kasih akses ke tabel instructor
+( yang ada gajinya), kasih view yang cuma nampilin nama dan
+departemen.
+.Pp
+.Sy Kata kunci: view itu mekanisme buat nyembunyiin data.
+.Ss Bagian 2.1: Definisi View
+.Bd -literal -offset indent
+create view v as <query expression>
+.Ed
+Contoh:
+.Bd -literal -offset indent
+create view faculty as
+select ID, name, dept_name
+from instructor
+.Ed
+Setelah didefinisiin, view bisa dipakai kayak tabel:
+.Bd -literal -offset indent
+select name from faculty where dept_name = 'Biology'
+.Ed
+.Sy Penting:
+View definition bukan bikin tabel baru. Yang disimpan cuma
+expression-nya. Pas kamu query view, expression-nya di-substitute
+ke query kamu.
+.Ss Bagian 2.2: Contoh View
+.Bd -literal -offset indent
+create view departments_total_salary(dept_name, total_salary) as
+select dept_name, sum(salary)
+from instructor
+group by dept_name
+.Ed
+View ini nampilin total gaji per departemen.
+.Pp
+.Sy View yang dibangun dari view lain:
+.Bd -literal -offset indent
+create view physics_fall_2009 as
+select course.course_id, sec_id, building, room_number
+from course, section
+where course.course_id = section.course_id
+  and course.dept_name = 'Physics'
+  and section.semester = 'Fall'
+  and section.year = '2009'
+
+create view physics_fall_2009_watson as
+select course_id, room_number
+from physics_fall_2009
+where building = 'Watson'
+.Ed
+.Ss Bagian 2.3: View Expansion
+Kalau view A dipakai di view B, dan view B dipakai di query,
+gimana caranya? Prosesnya disebut
+.Sy view expansion .
+.Pp
+Algoritma:
+.Bd -literal -offset indent
+repeat
+    cari view relation vi di expression e1
+    ganti vi dengan expression yang define vi
+until nggak ada view relation lagi
+.Ed
+Selama view definition-nya nggak recursive, loop ini berhenti.
+.Ss Bagian 2.4: Update View
+Bisa nggak update data lewat view?
+.Sy Tergantung.
+Kebanyakan SQL cuma allow update di "simple view". Syaratnya:
+.Bl -bullet -offset indent
+.It
+FROM clause cuma punya satu relation.
+.It
+SELECT clause cuma punya nama atribut, nggak ada expression,
+aggregate, atau DISTINCT.
+.It
+Atribut yang nggak ada di SELECT clause bisa di-set NULL.
+.It
+Nggak ada GROUP BY atau HAVING.
+.El
+Contoh yang bisa:
+.Bd -literal -offset indent
+create view faculty as
+select ID, name, dept_name from instructor
+
+insert into faculty values ('30765', 'Green', 'Music')
+.Ed
+Insert ini diterjemahin jadi:
+.Bd -literal -offset indent
+insert into instructor values ('30765', 'Green', 'Music', null)
+.Ed
+.Sy Kenapa salary jadi null?
+Karena view faculty nggak punya kolom salary. Jadi NULL.
+.Ss Bagian 2.5: View yang Nggak Bisa Di-update
+.Bd -literal -offset indent
+create view history_instructors as
+select * from instructor
+where dept_name = 'History'
+.Ed
+Kalau kamu insert
+.Sy ('25566', 'Brown', 'Biology', 100000)
+ke view ini, apa yang terjadi?
+.Pp
+Masalahnya:
+.Bl -bullet -offset indent
+.It
+View-nya cuma nampilin History.
+.It
+Tapi tuple baru-nya Biology.
+.It
+Kalau di-insert ke tabel instructor, dia bakal muncul di tabel,
+tapi
+.Sy nggak
+muncul di view.
+.El
+Ini yang disebut
+.Sy view update anomaly .
+Kebanyakan database nggak allow update di view kayak gini.
+.Ss Bagian 2.6: Materialized Views
+View biasa: datanya nggak disimpan, di-compute tiap query.
+View materialized: datanya disimpan di tabel fisik.
+.Pp
+.Sy Kenapa pakai materialized?
+Karena query jadi cepet. Nggak perlu compute ulang.
+.Pp
+.Sy Masalahnya:
+Kalau tabel underlying berubah, materialized view jadi out-of-date.
+Harus di-maintain \(em update view tiap kali tabel underlying
+berubah.
+.Pp
+.Sy Kapan pakai?
+Kalau query-nya sering dipakai tapi underlying table jarang
+berubah. Contoh: laporan bulanan.
+.Ss Bagian 3: Transactions
+.Sy Transaction itu apa?
+Unit of work. Kumpulan operasi yang harus jalan sebagai satu
+kesatuan.
+.Pp
+.Sy Sifatnya:
+.Bl -bullet -offset indent
+.It
+.Sy Atomic
+: entah jalan semua, atau nggak jalan sama sekali (rollback).
+.It
+.Sy Isolated
+: nggak saling ganggu sama transaction lain yang concurrent.
+.El
+.Sy Syntax:
+.Bd -literal -offset indent
+begin atomic
+    ... beberapa SQL statement ...
+end
+.Ed
+Atau:
+.Bd -literal -offset indent
+begin transaction
+    ...
+commit work
+.Ed
+.Sy Default di banyak database:
+Setiap SQL statement itu transaction sendiri, otomatis commit.
+Buat transaction multi-statement, kamu harus explicit
+.Sy begin ... commit .
+Atau matiin auto-commit di level connection.
+.Ss Bagian 4: Integrity Constraints
+.Sy Integrity constraint itu apa?
+Aturan yang mastiin data di database tetap konsisten. Mencegah
+perubahan yang bikin data jadi nggak valid.
+.Pp
+.Sy Contoh:
+.Bl -bullet -offset indent
+.It
+Saldo rekening harus > 10000.
+.It
+Gaji karyawan minimal 4 dollar/jam.
+.It
+Customer harus punya nomor telepon.
+.El
+.Sy Kenapa penting?
+Karena kalau constraint cuma ditulis di kode aplikasi, gampang
+dilanggar. Contoh: aplikasi A cek saldo, aplikasi B nggak. Data
+jadi nggak konsisten. Constraint di database itu enforce di level
+data, jadi nggak bisa dilanggar dari manapun.
+.Ss Bagian 4.1: NOT NULL
+Kolom nggak boleh kosong.
+.Bd -literal -offset indent
+name    varchar(20) not null
+budget  numeric(12,2) not null
+.Ed
+.Ss Bagian 4.2: UNIQUE
+Kolom (atau kombinasi kolom) harus unik.
+.Bd -literal -offset indent
+unique (A1, A2, ..., Am)
+.Ed
+.Sy Bedanya sama PRIMARY KEY?
+.Bl -bullet -offset indent
+.It
+.Sy Primary key
+: nggak boleh NULL.
+.It
+.Sy Unique
+: boleh NULL. Dan boleh lebih dari satu NULL (tergantung
+database).
+.El
+.Ss Bagian 4.3: CHECK
+Constraint berupa predicate.
+.Bd -literal -offset indent
+check (P)
+.Ed
+Contoh:
+.Bd -literal -offset indent
+create table section (
+    course_id  varchar(8),
+    sec_id     varchar(8),
+    semester   varchar(6),
+    year       numeric(4,0),
+    building   varchar(15),
+    room_number varchar(7),
+    time_slot_id varchar(4),
+    primary key (course_id, sec_id, semester, year),
+    check (semester in ('Fall', 'Winter', 'Spring', 'Summer'))
+)
+.Ed
+Constraint ini mastiin semester cuma boleh 4 nilai itu.
+.Ss Bagian 4.4: Referential Integrity
+Nilai di satu relation harus muncul di relation lain.
+.Pp
+.Sy Contoh:
+Kalau
+.Sy "Biology"
+muncul di tabel
+.Sy instructor ,
+maka harus ada tuple
+.Sy "Biology"
+di tabel
+.Sy department .
+.Pp
+.Sy Definisi formal:
+Kalau A adalah primary key di S, dan A muncul di R, maka A
+adalah foreign key di R.
+.Pp
+.Sy Syntax:
+.Bd -literal -offset indent
+create table course (
+    course_id  char(5) primary key,
+    title      varchar(20),
+    dept_name  varchar(20) references department
+)
+.Ed
+Atau:
+.Bd -literal -offset indent
+create table course (
+    dept_name  varchar(20),
+    foreign key (dept_name) references department
+        on delete cascade
+        on update cascade
+)
+.Ed
+.Sy Action kalau referenced tuple dihapus/diupdate:
+.Bl -tag -width "set default" -offset indent
+.It Sy cascade
+Ikut hapus/update.
+.It Sy set null
+Set NULL.
+.It Sy set default
+Set ke nilai default.
+.It Sy restrict
+Tolak operasinya (default).
+.El
+.Ss Bagian 4.5: Kapan Foreign Key Nggak Cukup
+Ada constraint yang nggak bisa dinyatakan pakai foreign key.
+Contoh:
+.Bd -literal -offset indent
+check (time_slot_id in (select time_slot_id from time_slot))
+.Ed
+.Sy Kenapa nggak bisa pakai foreign key?
+Karena foreign key cuma bisa refer ke primary key, dan cuma
+cek "nilai ini ada di tabel lain". Kalau constraint-nya lebih
+kompleks (misal "setiap section harus punya minimal satu
+instructor"), foreign key nggak bisa.
+.Pp
+.Sy Solusinya:
+.Bl -bullet -offset indent
+.It
+.Sy Trigger
+\(em program yang jalan otomatis kalau ada event.
+.It
+.Sy Assertion
+\(em constraint di level database. Tapi ini nggak di-support
+sama hampir semua database.
+.El
+.Ss Bagian 5: Tipe Data SQL
+Selain tipe dasar (int, varchar, numeric), SQL punya tipe khusus:
+.Bl -tag -width "timestamp" -offset indent
+.It Sy date
+Tanggal: year (4 digit), month, day.
+.Bd -literal -offset indent
+date '2005-7-27'
+.Ed
+.It Sy time
+Waktu: hour, minute, second.
+.Bd -literal -offset indent
+time '09:00:30'
+time '09:00:30.75'
+.Ed
+.It Sy timestamp
+Date + time.
+.Bd -literal -offset indent
+timestamp '2005-7-27 09:00:30.75'
+.Ed
+.It Sy interval
+Periode waktu.
+.Bd -literal -offset indent
+interval '1' day
+.Ed
+.Sy Operasi:
+.Bl -bullet -offset indent
+.It
+Date/time/timestamp dikurangi date/time/timestamp = interval.
+.It
+Interval ditambah date/time/timestamp = date/time/timestamp.
+.El
+.El
+.Ss Bagian 5.1: Index
+.Bd -literal -offset indent
+create index studentID_index on student(ID)
+.Ed
+.Sy Index itu apa?
+Struktur data yang mempercepat akses ke record berdasarkan
+nilai atribut tertentu.
+.Pp
+.Sy Kenapa cepet?
+Tanpa index: scan semua baris. O(n).
+Dengan index: pakai struktur kayak B-tree. O(log n).
+.Pp
+.Sy Contoh:
+.Bd -literal -offset indent
+select * from student where ID = '12345'
+.Ed
+Dengan index di
+.Sy ID ,
+database bisa langsung cari recordnya tanpa scan semua.
+.Ss Bagian 5.2: User-Defined Type
+.Sy CREATE TYPE:
+.Bd -literal -offset indent
+create type Dollars as numeric(12,2) final
+
+create table department (
+    dept_name  varchar(20),
+    building   varchar(15),
+    budget     Dollars
+)
+.Ed
+.Sy CREATE DOMAIN:
+.Bd -literal -offset indent
+create domain person_name char(20) not null
+
+create domain degree_level varchar(10)
+    constraint degree_level_test
+    check (value in ('Bachelors', 'Masters', 'Doctorate'))
+.Ed
+.Sy Bedanya TYPE vs DOMAIN:
+.Bl -bullet -offset indent
+.It
+.Sy Type
+: tipe data baru.
+.It
+.Sy Domain
+: tipe data existing + constraint.
+.El
+Domain lebih fleksibel karena bisa nambah constraint.
+.Ss Bagian 5.3: Large Object Types
+Buat nyimpen data gede kayak foto, video, file CAD:
+.Bl -tag -width "clob" -offset indent
+.It Sy blob
+Binary large object. Kumpulan data biner yang nggak
+diinterpretasi database. Aplikasi yang ngurus interpretasinya.
+.It Sy clob
+Character large object. Kumpulan data karakter.
+.El
+.Sy Cara akses:
+Pas query return large object, yang dikembalikan bukan datanya,
+tapi
+.Sy pointer
+ke data itu. Aplikasi yang ambil datanya secara streaming.
+.Ss Bagian 6: Authorization
+.Sy Authorization itu apa?
+Aturan siapa boleh ngapain.
+.Ss Bagian 6.1: Jenis Authorization
+.Bl -tag -width "Delete" -offset indent
+.It Sy Read
+Baca data, tapi nggak boleh modifikasi.
+.It Sy Insert
+Tambah data baru, tapi nggak boleh modifikasi yang ada.
+.It Sy Update
+Modifikasi data, tapi nggak boleh hapus.
+.It Sy Delete
+Hapus data.
+.El
+.Sy Authorization buat modifikasi schema:
+.Bl -tag -width "Alteration" -offset indent
+.It Sy Index
+Bikin dan hapus index.
+.It Sy Resources
+Bikin relation baru.
+.It Sy Alteration
+Tambah/hapus atribut di relation.
+.It Sy Drop
+Hapus relation.
+.El
+.Ss Bagian 6.2: GRANT
+Kasih authorization.
+.Bd -literal -offset indent
+grant <privilege list> on <relation or view> to <user list>
+.Ed
+Contoh:
+.Bd -literal -offset indent
+grant select on instructor to U1, U2, U3
+grant insert, update on department to U1
+grant all privileges on branch to U2
+.Ed
+.Sy User list bisa:
+.Bl -bullet -offset indent
+.It
+User ID spesifik.
+.It
+.Sy public
+\(em semua user valid.
+.It
+.Sy role
+\(em grup user.
+.El
+.Sy Aturan penting:
+Grantor harus udah punya privilege yang dia kasih. Nggak bisa
+kasih yang kamu nggak punya.
+.Ss Bagian 6.3: REVOKE
+Cabut authorization.
+.Bd -literal -offset indent
+revoke <privilege list> on <relation or view> from <user list>
+.Ed
+Contoh:
+.Bd -literal -offset indent
+revoke select on branch from U1, U2, U3
+revoke all on branch from U1
+.Ed
+.Sy Aturan:
+.Bl -bullet -offset indent
+.It
+Kalau
+.Sy public
+di-revoke, semua user kehilangan privilege, kecuali yang
+explicit di-grant.
+.It
+Kalau privilege yang sama di-grant dua kali dari grantor berbeda,
+revoke dari satu grantor nggak ngefek.
+.It
+Semua privilege yang depend ke privilege yang di-revoke, ikut
+di-revoke.
+.El
+.Ss Bagian 6.4: Role
+.Sy Role itu apa?
+Grup user. Privilege bisa dikasih ke role, terus role dikasih
+ke user.
+.Bd -literal -offset indent
+create role instructor
+grant instructor to Amit
+
+grant select on takes to instructor
+.Ed
+.Sy Kenapa pakai role?
+Karena lebih gampang manage. Daripada kasih privilege satu-satu
+ke 100 dosen, kasih ke role "instructor", terus assign role-nya.
+.Pp
+.Sy Chain of roles:
+Role bisa di-grant ke role lain.
+.Bd -literal -offset indent
+create role teaching_assistant
+grant teaching_assistant to instructor
+-- instructor inherits all privileges of teaching_assistant
+
+create role dean
+grant instructor to dean
+grant dean to Satoshi
+.Ed
+.Ss Bagian 6.5: Authorization di View
+Kalau kamu punya view, kamu bisa grant privilege ke view itu
+tanpa grant ke tabel underlying-nya.
+.Bd -literal -offset indent
+create view geo_instructor as
+select * from instructor where dept_name = 'Geology'
+
+grant select on geo_instructor to geo_staff
+.Ed
+.Sy Pertanyaan:
+Kalau geo_staff query view itu, tapi dia nggak punya akses ke
+tabel instructor, apa yang terjadi?
+.Pp
+.Sy Jawab:
+Tergantung database. Di SQL standard, view access nggak butuh
+akses ke underlying table. Tapi beberapa database implementasinya
+beda.
+.Ss Bagian 6.6: Other Authorization Features
+.Bl -tag -width "transfer" -offset indent
+.It Sy references privilege
+Buat bikin foreign key.
+.Bd -literal -offset indent
+grant reference (dept_name) on department to Mariano
+.Ed
+.Sy Kenapa perlu?
+Karena bikin foreign key ke tabel orang lain itu butuh izin.
+.It Sy Transfer of privileges
+.Bd -literal -offset indent
+grant select on department to Amit with grant option
+revoke select on department from Amit, Satoshi cascade
+revoke select on department from Amit, Satoshi restrict
+.Ed
+.Sy with grant option
+: user bisa grant lagi ke user lain.
+.Sy cascade
+: revoke ikut ke user yang di-grant.
+.Sy restrict
+: revoke ditolak kalau ada yang masih pakai.
+.El
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                Inti
+Inner join            Cuma tuple yang match
+Left outer join       Kiri tetap muncul
+Right outer join      Kanan tetap muncul
+Full outer join       Kedua sisi tetap muncul
+Natural join          Match otomatis atribut sama
+Using                 Specify atribut untuk match
+View                  Virtual relation dari query
+Materialized view     View yang disimpan fisik
+Transaction           Unit of work
+Not null              Kolom nggak boleh NULL
+Unique                Kolom harus unik
+Check                 Constraint berupa predicate
+Foreign key           Refer ke primary key tabel lain
+Cascade               Ikut hapus/update
+Date/time/timestamp   Tipe data waktu
+Blob/clob             Large object
+Grant                 Kasih authorization
+Revoke                Cabut authorization
+Role                  Grup user
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy join tanpa outer itu cuma nampilin yang match, dan view
+itu mekanisme buat nyembunyiin data, bukan bikin tabel baru.
+Dua hal itu yang sering disalahpahami.
+.Pp
+Yang belum dijawab di sini: gimana caranya materialized view
+di-maintain biar tetap up-to-date? Kapan pakai cascade, kapan
+pakai restrict? Gimana caranya audit siapa yang akses apa?
+Itu topik lanjutan: view maintenance, security auditing.
+.Sh SEE ALSO
+.Xr sql-intro 1 ,
+.Xr relational-model 1 ,
+.Xr database-intro 1
+.Sh AUTHORS
+.An mroczect
