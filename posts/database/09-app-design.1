@@ -1,0 +1,692 @@
+.Dd 2026-10-15 17:30:00
+.Dt APP-DESIGN 1
+.Os
+.Sh NAME
+.Nm app-design
+.Nd desain dan pengembangan aplikasi database
+.Sh DESCRIPTION
+Ini catatan Chapter 9 dari buku Database System Concepts. Isinya:
+arsitektur aplikasi, web fundamentals, servlets, JSP, PHP,
+arsitektur 3-layer, RAD, performance, security, encryption.
+.Pp
+Bahasa santai. Tiap konsep dijelasin kenapa dia ada. Karena
+topik ini jembatan antara database dan aplikasi beneran.
+.Ss Bagian 1: Kenapa Perlu Application Program?
+.Sy Kenyataan:
+Kebanyakan user database
+.Sy nggak
+pakai SQL langsung. Mereka pakai aplikasi: m-banking, e-commerce,
+media sosial.
+.Pp
+.Sy Aplikasi
+jadi intermediary antara user dan database.
+.Ss Bagian 1.1: Tiga Layer Aplikasi
+.Bl -tag -width "Front-end" -offset indent
+.It Sy Front-end
+User interface. Bisa form, GUI, atau web-based.
+.It Sy Middle layer
+Business logic. Ngatur aturan, validasi, workflow.
+.It Sy Backend
+Database. Nyimpen data.
+.El
+.Ss Bagian 1.2: Evolusi Arsitektur Aplikasi
+.Bl -tag -width "Web era" -offset indent
+.It Sy Mainframe era (1960-70an)
+Terminal \(-> mainframe computer. Proprietary network.
+.It Sy PC era (1980an)
+Desktop PC \(-> LAN \(-> database. Aplikasi di-install di tiap PC.
+.It Sy Web era (1990an ke atas)
+Browser \(-> internet \(-> web application server \(-> database.
+Nggak perlu install.
+.El
+.Sy Kenapa web menang?
+Karena browser jadi de-facto standard user interface. User bisa
+akses dari mana aja, nggak perlu install specialized code.
+Javascript, Flash, dan scripting lain jalan di browser,
+di-download transparently.
+.Ss Bagian 2: World Wide Web
+.Sy Web
+= distributed information system berbasis hypertext.
+.Pp
+.Sy HTML documents
+berisi:
+.Bl -bullet -offset indent
+.It
+Text plus font specification.
+.It
+Hypertext link ke dokumen lain.
+.It
+Forms \(em user bisa masukin data.
+.El
+.Ss Bagian 2.1: URL
+.Sy Uniform Resource Locator.
+Contoh:
+.Bd -literal -offset indent
+http://www.acm.org/sigmod
+.Ed
+.Sy Struktur:
+.Bl -enun -offset indent
+.It
+.Sy http:
+\(em cara akses dokumen.
+.It
+.Sy www.acm.org
+\(em nama unik machine di internet.
+.It
+.Sy /sigmod
+\(em identifikasi dokumen di machine.
+.El
+.Sy Bisa juga:
+.Bd -literal -offset indent
+http://www.google.com/search?q=silberschatz
+.Ed
+Path ke program, plus argumen.
+.Ss Bagian 2.2: HTML dan HTTP
+.Sy HTML
+provide:
+.Bl -bullet -offset indent
+.It
+Formatting.
+.It
+Hypertext link.
+.It
+Image display.
+.It
+Tables.
+.It
+Stylesheets.
+.It
+Input features: dropdown, radio button, checkbox, text box.
+.El
+.Sy HTTP
+\(em HyperText Transfer Protocol \(em buat komunikasi dengan
+web server.
+.Ss Bagian 2.3: Web Server
+.Sy Server bisa jadi front-end ke berbagai service.
+.Pp
+.Sy Dokumen di URL
+bisa jadi executable program. Pas di-request, program jalan,
+generate HTML, kirim balik ke client.
+.Pp
+.Sy Keuntungan:
+Buat install service baru, tinggal bikin executable baru.
+Browser provide GUI-nya.
+.Pp
+.Sy CGI
+\(em Common Gateway Interface \(em standard interface antara
+web server dan application server.
+.Ss Bagian 3: Arsitektur Web
+.Ss Bagian 3.1: Three-Layer Architecture
+.Bd -literal -offset indent
+Browser --HTTP--> Web server --> Application server --> Database server
+.Ed
+.Sy Kelebihan:
+Modular. Tiap layer bisa di-scale terpisah.
+.Sy Kekurangan:
+Multiple levels of indirection have overheads.
+.Ss Bagian 3.2: Two-Layer Architecture
+.Bd -literal -offset indent
+Browser --HTTP--> Web+Application server --> Database server
+.Ed
+.Sy Lebih simpel, lebih cepet. Tapi kurang modular.
+.Ss Bagian 3.3: HTTP dan Session
+.Sy HTTP itu connectionless.
+Setelah server reply, connection ditutup, server lupa request.
+.Pp
+.Sy Beda dengan Unix login atau JDBC/ODBC
+yang stay connected sampai client disconnect.
+.Pp
+.Sy Kenapa connectionless?
+Reduce load on server. OS punya limit buat open connections.
+.Pp
+.Sy Masalah:
+Information services butuh session info. Contoh: user
+authentication cukup sekali per session.
+.Pp
+.Sy Solusinya:
+Cookie.
+.Ss Bagian 3.4: Cookie
+.Sy Cookie
+= small piece of text containing identifying information.
+.Pp
+.Sy Cara kerja:
+.Bl -enun -offset indent
+.It
+Server kirim cookie ke browser di interaksi pertama.
+.It
+Browser kirim balik cookie itu ke server di interaksi
+berikutnya.
+.It
+Server simpen info tentang cookie yang dia issue.
+.El
+.Sy Isi cookie:
+Authentication info, user preferences.
+.Sy Bisa permanent atau limited time.
+.Ss Bagian 4: Servlets
+.Sy Servlet
+= Java API buat komunikasi antara web/application server dan
+application program.
+.Pp
+.Sy Cara kerja:
+.Bl -bullet -offset indent
+.It
+Application program (servlet) di-load ke server.
+.It
+Tiap request spawn new thread.
+.It
+Thread ditutup setelah request selesai.
+.El
+.Ss Bagian 4.1: Contoh Servlet
+.Bd -literal -offset indent
+public class PersonQueryServlet extends HttpServlet {
+    public void doGet(HttpServletRequest request,
+                      HttpServletResponse response)
+        throws ServletException, IOException
+    {
+        response.setContentType("text/html");
+        PrintWriter out = response.getWriter();
+        out.println("<HEAD><TITLE>Query Result</TITLE></HEAD>");
+        out.println("<BODY>");
+
+        String persontype = request.getParameter("persontype");
+        String number = request.getParameter("name");
+
+        if (persontype.equals("student")) {
+            // code to find students with specified name
+            // using JDBC to communicate with database
+            out.println("<table BORDER COLS=3>");
+            // ... loop results ...
+        } else {
+            // as above, but for instructors
+        }
+        out.println("</BODY>");
+        out.close();
+    }
+}
+.Ed
+.Ss Bagian 4.2: Servlet Session
+.Bd -literal -offset indent
+if (request.getSession(false) == true) {
+    // existing session
+} else {
+    // redirect to authentication page
+}
+
+request.getSession(true);  // creates new session
+
+session.setAttribute("userid", userid);
+session.getAttribute("userid");
+.Ed
+.Ss Bagian 4.3: Servlet Support
+.Sy Application servers:
+Apache Tomcat, Glassfish, JBoss, BEA Weblogic, IBM WebSphere,
+Oracle Application Servers.
+.Pp
+.Sy Support:
+Deployment, monitoring, J2EE platform.
+.Ss Bagian 5: Server-Side Scripting
+.Sy Ide:
+Embed executable code atau SQL di HTML document. Pas document
+di-request, server jalanin kode, generate HTML.
+.Pp
+.Sy Input dari HTML form
+bisa langsung dipakai di embedded code.
+.Pp
+.Sy Bahasa:
+JSP, PHP, VBScript, Perl, Python.
+.Ss Bagian 5.1: JSP
+.Bd -literal -offset indent
+<html>
+<head><title>Hello</title></head>
+<body>
+<% if (request.getParameter("name") == null) {
+       out.println("Hello World");
+   } else {
+       out.println("Hello, " + request.getParameter("name"));
+   }
+%>
+</body>
+</html>
+.Ed
+.Sy JSP di-compile jadi Java + Servlet.
+Bisa define new tags di tag library.
+.Ss Bagian 5.2: PHP
+.Bd -literal -offset indent
+<html>
+<head><title>Hello</title></head>
+<body>
+<?php
+if (!isset($_REQUEST['name'])) {
+    echo "Hello World";
+} else {
+    echo "Hello, " + $_REQUEST['name'];
+}
+?>
+</body>
+</html>
+.Ed
+.Sy PHP
+widely used buat web scripting. Extensive library, termasuk
+ODBC buat database access.
+.Ss Bagian 5.3: Client-Side Scripting
+.Sy Browser bisa fetch script dan jalanin di client site.
+Contoh: Javascript, Flash, VRML, Applets.
+.Pp
+.Sy Kegunaan:
+.Bl -bullet -offset indent
+.It
+Animation.
+.It
+Validasi input user.
+.It
+Flexible interaction.
+.It
+Speed up interaction (nggak perlu round trip ke server).
+.El
+.Sy Security:
+Butuh mekanisme biar malicious script nggak ngerusak client.
+Java punya security system yang cegah applet akses system
+call langsung.
+.Ss Bagian 5.4: Javascript dan AJAX
+.Sy Javascript
+bisa:
+.Bl -bullet -offset indent
+.It
+Cek validitas input.
+.It
+Modify displayed page pakai DOM.
+.It
+Communicate dengan server buat fetch data tanpa reload
+(AJAX).
+.El
+.Sy Contoh:
+Pilih negara di dropdown, otomatis populate daftar provinsi
+di dropdown kedua.
+.Ss Bagian 6: Application Architecture
+.Ss Bagian 6.1: Application Layers
+.Bl -tag -width "Data access" -offset indent
+.It Sy Presentation / user interface
+Bisa pakai MVC (Model-View-Controller).
+.Bl -bullet -offset indent
+.It
+.Sy Model
+\(em business logic.
+.It
+.Sy View
+\(em presentation of data.
+.It
+.Sy Controller
+\(em receive events, execute actions, return view.
+.El
+.It Sy Business logic
+High-level view of data dan actions. Pakai object data model.
+Hide detail schema.
+.It Sy Data access
+Interface antara business logic dan database. Mapping object
+model ke relational model.
+.El
+.Ss Bagian 6.2: Business Logic
+.Sy Provides abstractions
+dari entities: student, instructor, course.
+.Pp
+.Sy Enforces business rules:
+Contoh: student bisa enroll cuma kalau prereq udah selesai
+dan tuition udah dibayar.
+.Pp
+.Sy Supports workflows:
+Task yang involve multiple participants.
+.Ss Bagian 6.3: Object-Relational Mapping
+.Sy Ide:
+Application code ditulis pakai object-oriented data model,
+tapi data disimpen di relational database.
+.Pp
+.Sy Alternatif:
+Implement object-oriented atau object-relational database.
+Tapi belum commercially successful.
+.Pp
+.Sy Schema designer
+harus provide mapping antara object data dan relational schema.
+Contoh: Java class
+.Sy Student
+map ke relation
+.Sy student .
+.Ss Bagian 6.4: Hibernate
+.Sy Hibernate
+= object-relational mapping system yang widely used.
+.Pp
+.Sy Fitur:
+.Bl -bullet -offset indent
+.It
+Runs on variety of database systems.
+.It
+Support query language yang bisa express complex query
+dengan join.
+.It
+Translate queries ke SQL.
+.It
+Allow relationships to be mapped to sets associated with
+objects.
+.El
+.Ss Bagian 6.5: Entity Data Model (Microsoft)
+.Sy Provides entity-relationship model
+langsung ke application.
+.Pp
+.Sy Maps data
+antara entity data model dan underlying storage.
+.Pp
+.Sy Entity SQL
+operate langsung di Entity Data Model.
+.Ss Bagian 6.6: Web Services
+.Sy REST
+\(em Representation State Transfer. Pakai standard HTTP request
+ke URL. Return data in XML atau JSON.
+.Pp
+.Sy Big Web Services
+\(em uses XML representation, standard protocol layer on top
+of HTTP.
+.Ss Bagian 6.7: Offline Web Apps
+.Sy Tools
+buat aplikasi yang bisa use the Web when connected, tapi
+operate locally when disconnected.
+.Pp
+.Sy Contoh:
+Google Gears browser plugin. Provide local database, local
+web server, dan support execution JavaScript di client.
+.Pp
+.Sy Adobe AIR
+provide similar functionality di luar browser.
+.Ss Bagian 7: Rapid Application Development (RAD)
+.Sy Masalah:
+Developing web application interfaces butuh banyak effort.
+Apalagi buat rich interaction Web 2.0.
+.Pp
+.Sy Solusi:
+.Bl -bullet -offset indent
+.It
+Function library buat generate UI elements.
+.It
+Drag-and-drop di IDE.
+.It
+Automatically generate code dari declarative spec.
+.El
+.Ss Bagian 7.1: Web App Frameworks
+.Bl -tag -width "Rails" -offset indent
+.It Sy Java Server Faces (JSF)
+Include JSP tag library.
+.It Sy Ruby on Rails
+Easy creation of simple CRUD interfaces by code generation
+from database schema.
+.El
+.Ss Bagian 7.2: ASP.NET dan Visual Studio
+.Sy ASP.NET
+provide berbagai controls yang interpreted di server, generate
+HTML.
+.Pp
+.Sy Visual Studio
+provide drag-and-drop development.
+.Pp
+.Sy Fitur:
+.Bl -bullet -offset indent
+.It
+Menu dan list box bisa diasosiasiin dengan DataSet.
+.It
+Validator controls buat form input.
+.It
+JavaScript buat enforce constraint di client, separately
+enforced di server.
+.It
+DataGrid buat display SQL query result.
+.El
+.Ss Bagian 8: Application Performance
+.Sy Masalah:
+Popular web sites diakses jutaan user tiap hari, ribuan request
+per detik di peak time.
+.Pp
+.Sy Solusi:
+Caching.
+.Bl -tag -width "Client-side" -offset indent
+.It Sy Server-side
+.Bl -bullet -offset indent
+.It
+Caching JDBC connections (connection pooling).
+.It
+Caching results of database queries.
+.It
+Caching generated HTML.
+.El
+.It Sy Client-side
+Caching pages by web proxy.
+.El
+.Ss Bagian 9: Application Security
+.Ss Bagian 9.1: SQL Injection
+.Sy Contoh bug:
+.Bd -literal -offset indent
+"select * from instructor where name = " + name + ""
+.Ed
+.Sy Kalau user masukin:
+.Bd -literal -offset indent
+X' or 'Y' = 'Y
+.Ed
+.Sy Query jadi:
+.Bd -literal -offset indent
+select * from instructor
+where name = 'X' or 'Y' = 'Y'
+.Ed
+.Sy Lebih parah:
+User bisa masukin:
+.Bd -literal -offset indent
+X'; update instructor set salary = salary + 10000;
+.Ed
+.Sy Solusi:
+Selalu pakai
+.Sy prepared statement
+dengan user input sebagai parameter.
+.Ss Bagian 9.2: Cross-Site Scripting (XSS/XSRF)
+.Sy Serangan:
+HTML code di satu page jalanin action di page lain.
+.Bd -literal -offset indent
+<img src="http://mybank.com/transfermoney?amount=1000&toaccount=14523">
+.Ed
+.Sy Risiko:
+Kalau user viewing page itu sementara login ke mybank,
+transfernya bisa sukses.
+.Ss Bagian 9.3: Proteksi dari XSS
+.Bl -enun -offset indent
+.It
+Disallow HTML tags di text input user. Detect dan strip.
+.It
+Pakai referer value buat cek link dari page valid.
+.It
+Pastiin IP request sama dengan IP authentication.
+.It
+Never use GET method buat updates.
+.El
+.Ss Bagian 9.4: Password Leakage
+.Bl -bullet -offset indent
+.It
+Never store password di clear text.
+.It
+Restrict access ke database server dari IP application servers.
+.It
+Source file backup (file.jsp~, .file.jsp.swp) bisa di-serve
+kalau nggak hati-hati.
+.El
+.Ss Bagian 9.5: Authentication
+.Bl -tag -width "Two-factor" -offset indent
+.It Sy Single factor
+Password aja. Terlalu risky untuk critical applications.
+.It Sy Two-factor
+Password plus one-time password dari SMS atau device.
+.It Sy Man-in-the-middle attack
+Website palsu yang pura-pura jadi mybank.com.
+Solution: digital certificate plus secure HTTP.
+.It Sy Central authentication
+Application redirect ke central authentication service.
+LDAP atau Active Directory.
+.It Sy Single Sign-On (SSO)
+User authenticated sekali, applications communicate dengan
+authentication service buat verify identity.
+.Sy SAML
+\(em standard buat exchange authentication info.
+.Sy OpenID
+\(em share authentication across organizations.
+.El
+.Ss Bagian 10: Fine-Grained Authorization
+.Sy Masalah:
+SQL standard nggak allow fine-grained authorization seperti
+"student bisa lihat grade sendiri, tapi nggak yang lain".
+.Pp
+.Sy Problem 1:
+Database nggak tau siapa application user.
+.Sy Problem 2:
+SQL authorization at level table atau column, bukan row
+spesifik.
+.Pp
+.Sy Workaround:
+Pakai view.
+.Bd -literal -offset indent
+create view studentTakes as
+select * from takes
+where takes.ID = sys_context.user_id()
+.Ed
+.Sy Solution baru:
+Oracle Virtual Private Database (VPD) \(em allow predicates
+ditambahin transparently ke semua SQL query.
+.Ss Bagian 10.1: Audit Trail
+.Sy Aplikasi harus log actions
+buat detect siapa yang update atau access sensitive data.
+.Pp
+.Sy Audit trail
+digunakan after-the-fact buat:
+.Bl -bullet -offset indent
+.It
+Detect security breach.
+.It
+Repair damage.
+.It
+Trace who carried out breach.
+.El
+.Sy Level:
+Database level dan application level.
+.Ss Bagian 11: Enkripsi
+.Ss Bagian 11.1: Prinsip
+.Sy Data boleh di-encrypt
+kalau database authorization nggak cukup.
+.Pp
+.Sy Properties:
+.Bl -enun -offset indent
+.It
+Relatively simple buat authorized user encrypt/decrypt.
+.It
+Keamanan tergantung keamanan key, bukan algoritma.
+.It
+Extremely difficult buat intruder determine key.
+.El
+.Ss Bagian 11.2: Symmetric vs Public-Key
+.Bl -tag -width "Public-key" -offset indent
+.It Sy Symmetric
+Same key buat encrypt dan decrypt. Contoh: DES, AES.
+.It Sy Public-key (asymmetric)
+Different keys. Encryption key public, decryption key secret.
+Contoh: RSA.
+.El
+.Ss Bagian 11.3: Hybrid Schemes
+.Sy Kombinasi
+public key dan private key buat efisiensi.
+.Pp
+.Sy Masalah:
+Encryption nilai kecil kayak identifier rentan dictionary
+attacks.
+.Pp
+.Sy Solusi:
+Tambah random bits di akhir nilai sebelum encryption, hapus
+setelah decryption. Ini disebut
+.Sy salt bits .
+.Ss Bagian 11.4: Encryption in Databases
+.Sy Level encryption:
+.Bl -tag -width "Atribut" -offset indent
+.It Sy Disk block
+Tiap disk block di-encrypt pakai key di database-system
+software.
+.It Sy Entire relations atau attributes
+Non-sensitive relations atau attributes nggak perlu.
+Tapi attributes yang involved di primary/foreign key
+constraints nggak bisa di-encrypt.
+.El
+.Ss Bagian 11.5: Challenge-Response
+.Sy Menghindari transmission password.
+.Bd -literal -offset indent
+DB kirim challenge string random ke user
+User encrypt string, return hasil
+DB verifikasi dengan decrypt
+.Ed
+.Ss Bagian 11.6: Digital Signature
+.Sy Verifikasi authenticity of data.
+.Bd -literal -offset indent
+Use private key (reverse) buat encrypt data
+Siapa aja verify pakai public key (reverse) buat decrypt
+.Ed
+.Sy Nonrepudiation:
+Sender nggak bisa claim nggak bikin data itu.
+.Ss Bagian 11.7: Digital Certificate
+.Sy Verify authenticity of public key.
+.Pp
+.Sy Cara kerja:
+.Bl -enun -offset indent
+.It
+Tiap client punya public key dari root-level certification
+authorities.
+.It
+Site bisa dapetin certificate dari authority.
+.It
+Client pakai public key authority buat verify certificate.
+.El
+.Sy Multiple levels
+of certification authority bisa exist.
+.Ss Ringkasan
+.Bd -literal -offset indent
+Konsep                Inti
+Application layer     Front-end, middle, backend
+Mainframe/PC/Web      Tiga era arsitektur
+HTML                  Formatting + link + form
+HTTP                  Protocol connectionless
+URL                   Alamat resource
+Cookie                Session info
+Servlet               Java API buat web
+JSP                   Java Server Pages
+PHP                   Server-side scripting
+Javascript            Client-side scripting
+AJAX                  Async update tanpa reload
+MVC                   Model-View-Controller
+ORM                   Object-Relational Mapping
+Hibernate             ORM populer
+REST                  Web service via HTTP
+RAD                   Rapid Application Development
+Caching               Performance optimization
+SQL injection         Serangan via string concat
+XSS/XSRF              Cross-site scripting
+Two-factor auth       Password + OTP
+SSO                   Single Sign-On
+SAML                  Auth exchange standard
+Audit trail           Log actions
+Symmetric encryption  Same key
+Public-key            Different keys
+Digital signature     Verify authenticity
+Certificate           Verify public key
+.Ed
+Kalau kamu cuma inget satu hal dari catatan ini, inget ini:
+.Sy aplikasi database itu bukan cuma "frontend + database".
+Ada business logic layer, data access layer, security
+concerns, performance concerns. Kalau kamu skip layer-layer
+itu, aplikasi kamu bakal rapuh.
+.Pp
+Yang belum dijawab di sini: gimana caranya scale aplikasi
+buat jutaan user? Kapan pakai microservices, kapan monolith?
+Gimana caranya handle distributed transaction? Itu topik
+lanjutan: distributed systems, microservices architecture.
+.Sh SEE ALSO
+.Xr database-intro 1 ,
+.Xr sql-advanced 1 ,
+.Xr normalization 1
+.Sh AUTHORS
+.An mroczect
